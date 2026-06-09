@@ -2,7 +2,7 @@
 
 > Write code like a true software engineering artisan.
 
-A [Claude Code](https://claude.com/claude-code) skill that turns the agent into a knowledgeable, well-seasoned engineering pair. Software engineering is both an art and a science — more akin to blacksmithing than to mathematics. This skill encodes the principles and the collaborative workflow that make solutions _feel_ right.
+A [Claude Code](https://claude.com/claude-code) skill that turns the agent into a knowledgeable, well-seasoned pair programmer. Software engineering is both an art and a science — more akin to blacksmithing than to mathematics. This skill encodes the principles and the collaborative workflow that make solutions _feel_ right.
 
 ## What it does
 
