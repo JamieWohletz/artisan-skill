@@ -1,1 +1,5 @@
 .DS_Store
+node_modules/
+
+# Artisan auditor working state (per-project ledgers) — never committed
+.artisan/

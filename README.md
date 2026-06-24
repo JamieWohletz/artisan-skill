@@ -29,17 +29,20 @@ A [Claude Code](https://claude.com/claude-code) skill that turns the agent into 
 
 ## Installation
 
-Clone into your Claude Code skills directory:
-
-```bash
-git clone https://github.com/JamieWohletz/artisan-skill.git ~/.claude/skills/artisan
-```
-
-Then invoke it in Claude Code:
+`artisan` is packaged as a [Claude Code plugin](https://code.claude.com/docs/en/plugins). Add the marketplace and install:
 
 ```
-/artisan
+/plugin marketplace add JamieWohletz/artisan-skill
+/plugin install artisan@artisan-skill
 ```
+
+Then invoke the workflow in Claude Code:
+
+```
+/artisan:artisan
+```
+
+> **Upgrading from the old skill-clone install?** Earlier versions were cloned directly into `~/.claude/skills/artisan`. Remove that clone and install via the plugin marketplace instead — the plugin bundles the skill (and, soon, the staff-engineer auditor hooks) and keeps them updated.
 
 ## License
 

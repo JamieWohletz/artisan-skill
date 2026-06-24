@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "artisan",
+  "displayName": "Artisan",
+  "description": "Write code like a true software engineering artisan — a collaborative, Socratic engineering workflow.",
+  "author": {
+    "name": "Jamie Wohletz",
+    "url": "https://github.com/JamieWohletz"
+  },
+  "homepage": "https://github.com/JamieWohletz/artisan-skill",
+  "repository": "https://github.com/JamieWohletz/artisan-skill",
+  "license": "MIT",
+  "keywords": ["engineering", "code-quality", "workflow", "socratic", "staff-engineer"]
+}
