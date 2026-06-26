@@ -13,7 +13,7 @@ const os = require('os');
 const fs = require('fs');
 const path = require('path');
 
-const { createLedger, applyUpdate, openFindings, serialize, parse } = require('./ledger');
+const { createLedger, applyUpdate, coerceUpdate, openFindings, serialize, parse } = require('./ledger');
 const { ledgerPath, readLedger, writeLedger, ensureLedger } = require('./ledger-store');
 
 const NOW = '2026-06-25T00:00:00Z';
@@ -155,6 +155,45 @@ test('store: writeLedger stamps updated and readLedger recovers state', () => {
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('coerceUpdate accepts a well-formed update and drops unknown fields', () => {
+  const update = coerceUpdate({
+    direction: 'new dir',
+    decisions: ['chose markdown'],
+    findings: [{ severity: 'bug', title: 'boom', loc: 'a.js:1', origin: 'user' }],
+    close: [{ id: 'F1', note: 'fixed' }],
+    cursor: 5,
+    bogusField: 'ignored',
+  });
+  assert.deepEqual(update, {
+    direction: 'new dir',
+    decisions: ['chose markdown'],
+    findings: [{ severity: 'bug', title: 'boom', loc: 'a.js:1', origin: 'user' }],
+    close: [{ id: 'F1', note: 'fixed' }],
+    cursor: 5,
+  });
+});
+
+test('coerceUpdate output applies cleanly to a ledger', () => {
+  const update = coerceUpdate({ findings: [{ severity: 'risk', title: 'flaky' }] });
+  const l = applyUpdate(createLedger('s'), update);
+  assert.equal(l.findings[0].title, 'flaky');
+  assert.equal(l.findings[0].origin, 'auditor');
+});
+
+test('coerceUpdate rejects malformed input', () => {
+  assert.throws(() => coerceUpdate(null), /must be an object/);
+  assert.throws(() => coerceUpdate({ findings: [{ severity: 'nope', title: 'x' }] }), /severity must be one of/);
+  assert.throws(() => coerceUpdate({ findings: [{ severity: 'bug', title: '  ' }] }), /title must be a non-empty string/);
+  assert.throws(() => coerceUpdate({ findings: [{ severity: 'bug' }] }), /title must be a non-empty string/);
+  assert.throws(() => coerceUpdate({ cursor: 'soon' }), /cursor must be a finite number/);
+  assert.throws(() => coerceUpdate({ decisions: [42] }), /decisions\[0\] must be a non-empty string/);
+  assert.throws(() => coerceUpdate({ decisions: ['  '] }), /decisions\[0\] must be a non-empty string/);
+  assert.throws(() => coerceUpdate({ close: [{ note: 'no id' }] }), /close\[0\]\.id must be a non-empty string/);
+  assert.throws(() => coerceUpdate({ close: [{ id: '' }] }), /close\[0\]\.id must be a non-empty string/);
+  // `in` would let prototype members ("toString") through — own-key check must reject them.
+  assert.throws(() => coerceUpdate({ findings: [{ severity: 'toString', title: 'x' }] }), /severity must be one of/);
 });
 
 test('store: readLedger returns null for a missing file', () => {

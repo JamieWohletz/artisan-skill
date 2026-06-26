@@ -20,7 +20,7 @@ const { parse, serialize, createLedger } = require('./ledger');
  * @how Joins the project directory with `.artisan/ledger.md`.
  * @why Centralizes the on-disk location so hooks and the review skill agree on where the ledger lives; one active ledger per project for now, with per-session keying deferred until it proves necessary.
  *
- * @param {string} projectDir
+ * @param {string} projectDir The project root directory.
  * @returns {string} Absolute path to the project's ledger file.
  *
  * @sideeffects None
@@ -37,7 +37,7 @@ function ledgerPath(projectDir) {
  * @how Reads the file as UTF-8 and parses it; swallows ENOENT into null and rethrows any other error.
  * @why Callers need to distinguish "no ledger yet" (create one) from a real IO failure (surface it).
  *
- * @param {string} file
+ * @param {string} file Path to the ledger file.
  * @returns {Ledger | null} The parsed ledger, or null when absent.
  *
  * @sideeffects Reads from disk via fs.readFileSync.
@@ -61,8 +61,8 @@ function readLedger(file) {
  * @how Ensures the directory exists, serializes a copy with `updated` set to `now`, writes it to a pid-suffixed temp file in the same directory, then renames it over the target; on rename failure it unlinks the temp file before rethrowing.
  * @why The rename is atomic on POSIX, so a concurrent reader (the gate or injection hook) never sees a half-written ledger; cleaning up the temp file on the error path avoids leaking files we own.
  *
- * @param {string} file
- * @param {Ledger} ledger
+ * @param {string} file Path to the ledger file.
+ * @param {Ledger} ledger The ledger to persist.
  * @param {string} now ISO timestamp for the write (passed in — no hidden clock).
  * @returns {void}
  *
@@ -93,10 +93,10 @@ function writeLedger(file, ledger, now) {
  * @how Delegates to readLedger; on null, builds an empty ledger with createLedger, writes it via writeLedger, and returns it.
  * @why Gives the review skill and hooks a single call that always yields a usable ledger on first run.
  *
- * @param {string} file
- * @param {string} session
+ * @param {string} file Path to the ledger file.
+ * @param {string} session Session id for a freshly created ledger.
  * @param {string} now ISO timestamp.
- * @param {string} [direction]
+ * @param {string} [direction] Optional initial direction for a new ledger.
  * @returns {Ledger} The existing or newly created ledger.
  *
  * @sideeffects May create directories and write a new ledger file to disk via writeLedger.

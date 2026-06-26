@@ -95,7 +95,7 @@ const EMOJI_CLASS = Object.values(SEVERITY_EMOJI).join('');
  * @how Lowercases the title, collapses non-alphanumerics to spaces, trims and truncates it, then joins with severity and loc.
  * @why Lets the merge step recognize the same observation across audit runs so findings are not re-raised every turn.
  *
- * @param {{severity: Severity, title: string, loc?: string}} f
+ * @param {{severity: Severity, title: string, loc?: string}} f The finding (or new finding) to key.
  * @returns {string} Stable key for equality comparison.
  *
  * @sideeffects None
@@ -113,8 +113,8 @@ function findingKey(f) {
  * @how Returns a fresh Ledger with zeroed cursor, nextId of 1, the given direction, and empty decision/finding arrays.
  * @why Provides the initial in-memory state the IO layer persists when no ledger exists yet.
  *
- * @param {string} session
- * @param {string} [direction]
+ * @param {string} session The primary session id this ledger will track.
+ * @param {string} [direction] Optional initial direction/intent text.
  * @returns {Ledger} A new, empty ledger.
  *
  * @sideeffects None
@@ -136,14 +136,14 @@ function createLedger(session, direction = '') {
  * @how Appends novel decisions (ids are positional — decisions are append-only and never removed, so length-based ids stay stable); merges new findings while skipping any whose key matches a currently-open finding; closes findings by id; replaces direction and advances cursor when provided.
  * @why Separates the deterministic merge mechanics from the LLM's judgement so the same update can be applied and unit-tested without IO or a clock.
  *
- * @param {Ledger} ledger
- * @param {LedgerUpdate} update
+ * @param {Ledger} ledger The current immutable ledger state.
+ * @param {LedgerUpdate} update The validated auditor/user update to apply.
  * @returns {Ledger} A new ledger with the update applied.
  *
  * @sideeffects None
  * @systemlayer Utility
  * @domain artisan-ledger
- * @tags ledger, update, merge, dedupe, pure
+ * @tags ledger, update, merge, dedupe, findings, decisions, pure
  */
 function applyUpdate(ledger, update) {
   const decisions = ledger.decisions.slice();
@@ -193,11 +193,120 @@ function applyUpdate(ledger, update) {
 }
 
 /**
+ * @what Validates one untrusted value into a NewFinding.
+ * @how Requires severity to be a known key and title to be a non-empty string; validates optional loc/evidence/origin types; throws with the array index on any violation.
+ * @why The auditor emits findings as LLM-produced JSON; per-finding validation here means a malformed finding (e.g. missing title) fails loudly at the boundary rather than corrupting the ledger or throwing deep in findingKey.
+ *
+ * @param {unknown} f The untrusted value (one element of the parsed findings array) to validate.
+ * @param {number} i Index in the findings array, used in error messages.
+ * @returns {NewFinding} The validated finding.
+ * @throws {Error} When f is not a well-formed finding.
+ *
+ * @sideeffects None
+ * @systemlayer Utility
+ * @domain artisan-ledger
+ * @tags ledger, validate, finding, boundary, coerce
+ */
+function coerceNewFinding(f, i) {
+  if (typeof f !== 'object' || f === null) throw new Error(`findings[${i}] must be an object`);
+  const o = /** @type {Record<string, unknown>} */ (f);
+  // `in` walks the prototype chain ("toString" etc. would slip through), so check own keys only.
+  if (typeof o.severity !== 'string' || !Object.prototype.hasOwnProperty.call(SEVERITY_EMOJI, o.severity)) {
+    throw new Error(`findings[${i}].severity must be one of: ${Object.keys(SEVERITY_EMOJI).join(', ')}`);
+  }
+  if (typeof o.title !== 'string' || o.title.trim() === '') {
+    throw new Error(`findings[${i}].title must be a non-empty string`);
+  }
+  /** @type {NewFinding} */
+  const nf = { severity: /** @type {Severity} */ (o.severity), title: o.title };
+  if (o.loc !== undefined) {
+    if (typeof o.loc !== 'string') throw new Error(`findings[${i}].loc must be a string`);
+    nf.loc = o.loc;
+  }
+  if (o.evidence !== undefined) {
+    if (typeof o.evidence !== 'string') throw new Error(`findings[${i}].evidence must be a string`);
+    nf.evidence = o.evidence;
+  }
+  if (o.origin !== undefined) {
+    if (o.origin !== 'auditor' && o.origin !== 'user') {
+      throw new Error(`findings[${i}].origin must be 'auditor' or 'user'`);
+    }
+    nf.origin = o.origin;
+  }
+  return nf;
+}
+
+/**
+ * @what Validates and narrows an untrusted value (parsed auditor JSON) into a LedgerUpdate.
+ * @how Type-checks each optional field, delegates per-finding checks to coerceNewFinding, validates close entries and cursor, and drops unrecognized fields; throws a descriptive Error on any violation.
+ * @why The auditor's output is an untrusted LLM/JSON boundary; validating here keeps malformed updates out of applyUpdate and the persisted ledger.
+ *
+ * @param {unknown} raw The untrusted value (parsed auditor JSON) to validate and narrow.
+ * @returns {LedgerUpdate} The validated update.
+ * @throws {Error} When raw is not a well-formed update.
+ *
+ * @sideeffects None
+ * @systemlayer Utility
+ * @domain artisan-ledger
+ * @tags ledger, validate, boundary, coerce, auditor
+ */
+function coerceUpdate(raw) {
+  if (typeof raw !== 'object' || raw === null) throw new Error('update must be an object');
+  const o = /** @type {Record<string, unknown>} */ (raw);
+  /** @type {LedgerUpdate} */
+  const update = {};
+
+  if (o.direction !== undefined) {
+    if (typeof o.direction !== 'string') throw new Error('direction must be a string');
+    update.direction = o.direction;
+  }
+
+  if (o.decisions !== undefined) {
+    if (!Array.isArray(o.decisions)) throw new Error('decisions must be an array');
+    update.decisions = o.decisions.map((d, i) => {
+      if (typeof d !== 'string' || d.trim() === '') {
+        throw new Error(`decisions[${i}] must be a non-empty string`);
+      }
+      return d;
+    });
+  }
+
+  if (o.findings !== undefined) {
+    if (!Array.isArray(o.findings)) throw new Error('findings must be an array');
+    update.findings = o.findings.map((f, i) => coerceNewFinding(f, i));
+  }
+
+  if (o.close !== undefined) {
+    if (!Array.isArray(o.close)) throw new Error('close must be an array');
+    update.close = o.close.map((c, i) => {
+      if (typeof c !== 'object' || c === null) throw new Error(`close[${i}] must be an object`);
+      const cc = /** @type {Record<string, unknown>} */ (c);
+      if (typeof cc.id !== 'string' || cc.id.trim() === '') {
+        throw new Error(`close[${i}].id must be a non-empty string`);
+      }
+      if (cc.note !== undefined && typeof cc.note !== 'string') {
+        throw new Error(`close[${i}].note must be a string`);
+      }
+      return cc.note !== undefined ? { id: cc.id, note: cc.note } : { id: cc.id };
+    });
+  }
+
+  if (o.cursor !== undefined) {
+    if (typeof o.cursor !== 'number' || !Number.isFinite(o.cursor)) {
+      throw new Error('cursor must be a finite number');
+    }
+    update.cursor = o.cursor;
+  }
+
+  return update;
+}
+
+/**
  * @what Selects the open findings from a ledger, regardless of origin.
  * @how Filters the findings array on status === 'open'.
  * @why The injection hook and the manual review report only ever surface still-open items.
  *
- * @param {Ledger} ledger
+ * @param {Ledger} ledger The ledger to read.
  * @returns {Finding[]} The open findings.
  *
  * @sideeffects None
@@ -218,7 +327,7 @@ function openFindings(ledger) {
  * @how Joins id, severity emoji, optional backticked location, the title, and optional evidence into a single line.
  * @why Shared by every section's serializer so open and resolved findings render identically.
  *
- * @param {Finding} f
+ * @param {Finding} f The finding to render.
  * @returns {string} The finding line body.
  *
  * @sideeffects None
@@ -238,7 +347,7 @@ function findingBody(f) {
  * @how Emits scalar frontmatter, then the Direction prose, then Decisions, Open findings, User-raised, and Resolved sections, omitting any empty section to keep the injected context compact.
  * @why The markdown is both the persisted form and the text injected into the primary session, so it must round-trip with parse() and stay readable.
  *
- * @param {Ledger} ledger
+ * @param {Ledger} ledger The ledger to render.
  * @returns {string} The ledger rendered as markdown, newline-terminated.
  *
  * @sideeffects None
@@ -296,8 +405,8 @@ const DECISION_RE = /^- (D\d+) — (.+)$/;
  * @how Finds the separator index; returns the whole string and undefined when absent, otherwise the two sides.
  * @why Finding lines pack title plus optional evidence/note on one line; splitting only on the first separator keeps separators inside the title intact.
  *
- * @param {string} rest
- * @param {string} sep
+ * @param {string} rest The string to split.
+ * @param {string} sep The separator to split on (first occurrence).
  * @returns {[string, string | undefined]} The head and optional tail.
  *
  * @sideeffects None
@@ -316,9 +425,9 @@ function splitOnce(rest, sep) {
  * @how Reads id, emoji, optional loc, and the remaining text from the regex match; peels a resolution note for closed items, then splits the rest into title and optional evidence.
  * @why Origin and status are not encoded on the line itself — they come from the section header — so parsing must supply them.
  *
- * @param {RegExpMatchArray} match
- * @param {Origin} origin
- * @param {Status} status
+ * @param {RegExpMatchArray} match The FINDING_RE match for the line.
+ * @param {Origin} origin Origin derived from the line's section.
+ * @param {Status} status Status derived from the line's section.
  * @returns {Finding} The reconstructed finding.
  *
  * @sideeffects None
@@ -351,7 +460,7 @@ function parseFinding(match, origin, status) {
  * @how Extracts frontmatter scalars, then walks the body line by line tracking the current section and applying the section-appropriate grammar; unrecognized lines are ignored.
  * @why The auditor and the gate need structured access to findings; tolerating stray lines means a lightly hand-edited ledger still loads.
  *
- * @param {string} text
+ * @param {string} text The ledger markdown to parse.
  * @returns {Ledger} The parsed ledger.
  *
  * @sideeffects None
@@ -423,6 +532,7 @@ module.exports = {
   findingKey,
   createLedger,
   applyUpdate,
+  coerceUpdate,
   openFindings,
   serialize,
   parse,
