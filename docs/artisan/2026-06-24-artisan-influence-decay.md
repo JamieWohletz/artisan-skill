@@ -166,4 +166,24 @@ Install is solved natively by the plugin system — no bespoke installer, no `se
 5. **🔴 gate** — `PreToolUse(Edit|Write)` deny-with-reason + ack/override.
 6. **Polish** — optional `Stop` latency opt; config (cadence, enable/disable, model); ledger location; uninstall verification; README/docs.
 
-_First-slice decision still open: hook/auditor glue runtime (Node no-deps + @ts-check vs bash+jq) — settle at Slice 1 kickoff._
+_Runtime decision (settled): Node, no deps, `// @ts-check` + JSDoc; `node --test` + `tsc --checkJs`._
+
+## Progress log
+
+### Slice 1 — COMPLETE (delivers S5, the manual review)
+- **1a** `5c1be06` — restructured the flat skill into a Claude Code plugin (`.claude-plugin/`, `skills/workflow/`); install is now native (`/plugin marketplace add` → `/plugin install`). Workflow skill is `/artisan:workflow`.
+- **1b** `ff19381` — ledger engine: pure core (`scripts/lib/ledger.js` — parse/serialize/applyUpdate, markdown round-trip, dedupe) + isolated atomic IO (`ledger-store.js`) + tests + typecheck.
+- **1c** `a32db38` — fresh-context auditor: staff-engineer prompt (`scripts/auditor-prompt.md`), ledger CLI (`scripts/ledger-cli.js`, validates auditor JSON via `coerceUpdate`), and `/artisan:review` skill. 19 tests, clean typecheck.
+
+**Adopted convention:** structured JSDoc (`@what/@how/@why/@sideeffects/@systemlayer/@domain/@tags`) per Austin's codebase-guardian standard, enforced by the global validation hook.
+
+**Dogfooding result:** ran the real auditor over the 1c diff. It verified the full S5 runtime path (fresh subagent → read prompt → gather diff → valid JSON) AND caught a real bug (prototype-chain bypass in severity validation) plus 4 valid improvements — all fixed and tested. The premise is validated on our own code.
+
+### Remaining (plugin-based build plan)
+- **Slice 2** — spike: confirm a plugin hook can spawn a detached `claude -p` (load-bearing for auto-audit).
+- **Slice 3** — injection leg (`UserPromptSubmit` → `additionalContext`).
+- **Slice 4** — detached auto-audit (cursor, lockfile, no-op guard).
+- **Slice 5** — 🔴 gate (`PreToolUse` deny-with-reason + ack/override).
+- **Slice 6** — polish (optional `Stop` opt, config, uninstall verify, README).
+
+**Known follow-ups:** the `/artisan:review` install path assumes scripts resolve via the skill's base dir / `${CLAUDE_PLUGIN_ROOT}` — confirm during the live `/plugin install` smoke test (which only the user can run).
