@@ -179,8 +179,13 @@ _Runtime decision (settled): Node, no deps, `// @ts-check` + JSDoc; `node --test
 
 **Dogfooding result:** ran the real auditor over the 1c diff. It verified the full S5 runtime path (fresh subagent → read prompt → gather diff → valid JSON) AND caught a real bug (prototype-chain bypass in severity validation) plus 4 valid improvements — all fixed and tested. The premise is validated on our own code.
 
+### Slice 2 — COMPLETE (spike: detached subprocess)
+- `scripts/lib/spawn-detached.js` — `spawnDetached(cmd, args, {cwd, logFile})`: `spawn({detached:true})` + `unref()`, optional log redirection. The primitive the auto-audit hook will use to launch `claude -p`.
+- **Empirically proven** (`spawn-detached.test.js`): the call returns <300ms (non-blocking), the child does NOT run synchronously, and it survives the parent's exit to completion. This is the load-bearing behavior for launching the auditor from a synchronous hook. **Tier 2 (confirm inside a real CC hook) defers to the live `/plugin install` smoke test.**
+- `scripts/lib/test-utils.js` — shared `withTempDir` / `waitForFile` / `delay`, extracted under the validation hook's DRY rule.
+- **Follow-up:** migrate `ledger.test.js` / `ledger-cli.test.js` to use `test-utils` (they predate it). Note: the validation hook mis-diffs test files that move logic into imported helpers (served a stale cached denial); spike test written via shell as a result.
+
 ### Remaining (plugin-based build plan)
-- **Slice 2** — spike: confirm a plugin hook can spawn a detached `claude -p` (load-bearing for auto-audit).
 - **Slice 3** — injection leg (`UserPromptSubmit` → `additionalContext`).
 - **Slice 4** — detached auto-audit (cursor, lockfile, no-op guard).
 - **Slice 5** — 🔴 gate (`PreToolUse` deny-with-reason + ack/override).
