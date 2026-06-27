@@ -13,7 +13,9 @@ const os = require('os');
 const fs = require('fs');
 const path = require('path');
 
-const { createLedger, applyUpdate, coerceUpdate, openFindings, serialize, parse } = require('./ledger');
+const {
+  createLedger, applyUpdate, coerceUpdate, openFindings, renderInjection, serialize, parse,
+} = require('./ledger');
 const { ledgerPath, readLedger, writeLedger, ensureLedger } = require('./ledger-store');
 
 const NOW = '2026-06-25T00:00:00Z';
@@ -194,6 +196,31 @@ test('coerceUpdate rejects malformed input', () => {
   assert.throws(() => coerceUpdate({ close: [{ id: '' }] }), /close\[0\]\.id must be a non-empty string/);
   // `in` would let prototype members ("toString") through — own-key check must reject them.
   assert.throws(() => coerceUpdate({ findings: [{ severity: 'toString', title: 'x' }] }), /severity must be one of/);
+});
+
+test('renderInjection returns empty string when there is nothing to surface', () => {
+  assert.equal(renderInjection(createLedger('s')), '');
+});
+
+test('renderInjection includes direction, severity-ordered findings, and user markers', () => {
+  let l = applyUpdate(createLedger('s', 'Ship the gate'), {
+    findings: [
+      { severity: 'question', title: 'minor q' },
+      { severity: 'bug', title: 'crash', loc: 'a.js:9' },
+      { severity: 'risk', title: 'race', origin: 'user' },
+    ],
+  });
+  l = applyUpdate(l, { findings: [{ severity: 'design', title: 'closed one' }] });
+  l = applyUpdate(l, { close: [{ id: 'F4', note: 'done' }] });
+
+  const out = renderInjection(l);
+  assert.match(out, /\[artisan auditor — 3 open finding\(s\)\]/);
+  assert.match(out, /Direction: Ship the gate/);
+  // bug before risk before question (severity order)
+  assert.ok(out.indexOf('crash') < out.indexOf('race'));
+  assert.ok(out.indexOf('race') < out.indexOf('minor q'));
+  assert.match(out, /race \(you raised\)/);
+  assert.doesNotMatch(out, /closed one/); // closed findings are not injected
 });
 
 test('store: readLedger returns null for a missing file', () => {

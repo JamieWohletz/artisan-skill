@@ -185,8 +185,14 @@ _Runtime decision (settled): Node, no deps, `// @ts-check` + JSDoc; `node --test
 - `scripts/lib/test-utils.js` — shared `withTempDir` / `waitForFile` / `delay`, extracted under the validation hook's DRY rule.
 - **Follow-up:** migrate `ledger.test.js` / `ledger-cli.test.js` to use `test-utils` (they predate it). Note: the validation hook mis-diffs test files that move logic into imported helpers (served a stale cached denial); spike test written via shell as a result.
 
+### Slice 3 — COMPLETE (injection leg — the decay cure)
+- `renderInjection(ledger)` (pure) → compact, severity-ordered block of direction + open findings, with `(you raised)` provenance markers; closed findings excluded.
+- `scripts/hooks/inject.js` — `UserPromptSubmit` hook: reads the project ledger from the stdin `cwd`, emits `hookSpecificOutput.additionalContext` when non-empty, silent otherwise. Read-only, fast.
+- `hooks/hooks.json` — wires the hook via `${CLAUDE_PLUGIN_ROOT}`; plugin validates.
+- Tested: `renderInjection` units + a real-subprocess hook test (25 tests total). Smoke-tested — the injected block renders correctly.
+- **This is the standing re-grounding** that counters directive decay: the auditor's findings are re-injected every turn even as the conversation grows.
+
 ### Remaining (plugin-based build plan)
-- **Slice 3** — injection leg (`UserPromptSubmit` → `additionalContext`).
 - **Slice 4** — detached auto-audit (cursor, lockfile, no-op guard).
 - **Slice 5** — 🔴 gate (`PreToolUse` deny-with-reason + ack/override).
 - **Slice 6** — polish (optional `Stop` opt, config, uninstall verify, README).

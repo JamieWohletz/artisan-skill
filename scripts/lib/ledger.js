@@ -318,6 +318,42 @@ function openFindings(ledger) {
   return ledger.findings.filter((f) => f.status === 'open');
 }
 
+/** Severity order, most-to-least urgent, for rendering. */
+const SEVERITY_ORDER = ['bug', 'risk', 'pattern', 'design', 'missing', 'suggestion', 'question'];
+
+/**
+ * @what Renders a compact context block of a ledger's direction and open findings for injection into the primary session.
+ * @how Returns an empty string when there is nothing to surface; otherwise emits a header, the one-line direction, and each open finding (severity-ordered) with its id, location, and an origin marker for user-raised items.
+ * @why The UserPromptSubmit hook injects this every turn to re-ground the session in the auditor's standing findings — directly countering directive decay — so it must be terse and stable.
+ *
+ * @param {Ledger} ledger The ledger to render.
+ * @returns {string} The injection block, or "" when there is nothing to inject.
+ *
+ * @sideeffects None
+ * @systemlayer Utility
+ * @domain artisan-ledger
+ * @tags ledger, inject, render, context, decay
+ */
+function renderInjection(ledger) {
+  const open = openFindings(ledger);
+  const direction = ledger.direction.trim();
+  if (!open.length && !direction) return '';
+
+  const lines = [`[artisan auditor — ${open.length} open finding(s)]`];
+  if (direction) lines.push(`Direction: ${direction.replace(/\s+/g, ' ')}`);
+
+  const sorted = open
+    .slice()
+    .sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity));
+  for (const f of sorted) {
+    const loc = f.loc ? ` \`${f.loc}\`` : '';
+    const who = f.origin === 'user' ? ' (you raised)' : '';
+    lines.push(`${SEVERITY_EMOJI[f.severity]} ${f.id}${loc} — ${f.title}${who}`);
+  }
+  lines.push('(advisory — address these or run /artisan:review to refresh)');
+  return lines.join('\n');
+}
+
 // ---------------------------------------------------------------------------
 // Serialization
 // ---------------------------------------------------------------------------
@@ -534,6 +570,7 @@ module.exports = {
   applyUpdate,
   coerceUpdate,
   openFindings,
+  renderInjection,
   serialize,
   parse,
 };
