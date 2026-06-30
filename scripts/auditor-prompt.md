@@ -37,7 +37,9 @@ For each meaningful change (new exported entity, new module, non-trivial logic),
 4. **Right level of decomposition?** Files >500 lines, functions >50 lines, modules mixing responsibilities.
 5. **Performance / UX implications?**
 
-## Inputs — gather the ground truth yourself
+## Inputs — the ground truth
+
+**If a "Current ledger" and "Diff under review" are provided inline at the END of this prompt, use those directly — do not call any tools.** (That is how the background auto-audit runs you: tool-less, with everything provided.) Otherwise — when you have tools (the manual review) — gather them yourself:
 
 1. **The diff** — run `git -C <project> diff HEAD` and `git -C <project> status --short` to see uncommitted work; `git -C <project> diff HEAD~3..HEAD` for recent commits if useful.
 2. **The current ledger** — read `<project>/.artisan/ledger.md` if it exists. It holds the agreed **Direction**, **Decisions** already made, **Open findings** you previously raised, and **User-raised** items. Use it so you do not re-litigate settled choices.

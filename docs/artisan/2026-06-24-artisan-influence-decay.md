@@ -192,8 +192,16 @@ _Runtime decision (settled): Node, no deps, `// @ts-check` + JSDoc; `node --test
 - Tested: `renderInjection` units + a real-subprocess hook test (25 tests total). Smoke-tested — the injected block renders correctly.
 - **This is the standing re-grounding** that counters directive decay: the auditor's findings are re-injected every turn even as the conversation grows.
 
+### Slice 4 — COMPLETE (autonomous auto-audit) — the headline feature
+- `scripts/lib/audit-runner.js` (pure): `hashDiff` (change detection), `extractJson` (balanced-brace recovery of the auditor's JSON from prose/fences), `buildAuditorPrompt` (inline diff+ledger for a tool-less headless auditor).
+- `scripts/run-audit.js` — detached orchestrator: diff vs HEAD → skip on empty/unchanged (hash in `.artisan/audit-state.json`) or held lock (`.artisan/audit.lock`, with stale-steal) → run auditor → validate (`coerceUpdate`) → merge → persist. Auditor command is configurable (`ARTISAN_AUDITOR_BIN`/`ARGS`, default `claude -p`) so orchestration is testable with a stub.
+- `scripts/hooks/audit.js` — `Stop` hook: spawns the orchestrator **detached** and returns instantly; bulletproof.
+- `hooks/hooks.json` — adds `Stop`. `auditor-prompt.md` made dual-mode (inline context for headless; gather-yourself for the tool-equipped manual review).
+- **Proven end-to-end with a stub** (37 tests): Stop → detached audit → ledger → injection, with change-detection + single-flight no-op verified.
+- **Tier-2 still pending live:** the real `claude -p` headless call (does it read the prompt on stdin / work in the hook env) — only a live run confirms it.
+- **Cadence:** audits on every `Stop`, self-throttled to "only when the diff changed" + single-flight. Cost = one `claude -p` per changed-diff turn.
+
 ### Remaining (plugin-based build plan)
-- **Slice 4** — detached auto-audit (cursor, lockfile, no-op guard).
 - **Slice 5** — 🔴 gate (`PreToolUse` deny-with-reason + ack/override).
 - **Slice 6** — polish (optional `Stop` opt, config, uninstall verify, README).
 
