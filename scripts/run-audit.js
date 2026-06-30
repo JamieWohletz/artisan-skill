@@ -156,6 +156,14 @@ function runAuditor(prompt) {
  */
 function main() {
   const project = parseProject(process.argv.slice(2));
+
+  // Per-repo opt-in: the Stop hook is user-scope and fires in every repo, so only
+  // auto-audit projects the developer has activated by creating `.artisan/` (which
+  // running /artisan:review does). Without this, the auditor would run — and cost
+  // and litter — in every repo with uncommitted changes.
+  const artisanDir = path.join(project, '.artisan');
+  if (!fs.existsSync(artisanDir)) return;
+
   const diff = getDiff(project);
   if (!diff.trim()) {
     logLine(project, 'audit: no diff — skipped');
@@ -163,7 +171,6 @@ function main() {
   }
 
   const hash = hashDiff(diff);
-  const artisanDir = path.join(project, '.artisan');
   const statePath = path.join(artisanDir, 'audit-state.json');
   let lastHash = '';
   try {

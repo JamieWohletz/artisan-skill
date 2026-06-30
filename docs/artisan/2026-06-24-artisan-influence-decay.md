@@ -194,7 +194,7 @@ _Runtime decision (settled): Node, no deps, `// @ts-check` + JSDoc; `node --test
 
 ### Slice 4 — COMPLETE (autonomous auto-audit) — the headline feature
 - `scripts/lib/audit-runner.js` (pure): `hashDiff` (change detection), `extractJson` (balanced-brace recovery of the auditor's JSON from prose/fences), `buildAuditorPrompt` (inline diff+ledger for a tool-less headless auditor).
-- `scripts/run-audit.js` — detached orchestrator: diff vs HEAD → skip on empty/unchanged (hash in `.artisan/audit-state.json`) or held lock (`.artisan/audit.lock`, with stale-steal) → run auditor → validate (`coerceUpdate`) → merge → persist. Auditor command is configurable (`ARTISAN_AUDITOR_BIN`/`ARGS`, default `claude -p`) so orchestration is testable with a stub.
+- `scripts/run-audit.js` — detached orchestrator: **per-repo opt-in** (skips unless `.artisan/` exists, so the user-scope Stop hook doesn't audit/litter/cost in every repo — running `/artisan:review` once activates a repo) → diff vs HEAD → skip on empty/unchanged (hash in `.artisan/audit-state.json`) or held lock (`.artisan/audit.lock`, with stale-steal) → run auditor → validate (`coerceUpdate`) → merge → persist. Auditor command is configurable (`ARTISAN_AUDITOR_BIN`/`ARGS`, default `claude -p`) so orchestration is testable with a stub.
 - `scripts/hooks/audit.js` — `Stop` hook: spawns the orchestrator **detached** and returns instantly; bulletproof.
 - `hooks/hooks.json` — adds `Stop`. `auditor-prompt.md` made dual-mode (inline context for headless; gather-yourself for the tool-equipped manual review).
 - **Proven end-to-end with a stub** (37 tests): Stop → detached audit → ledger → injection, with change-detection + single-flight no-op verified.

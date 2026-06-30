@@ -5,7 +5,8 @@
  * Integration test for the background audit orchestrator. Drives run-audit.js as
  * a real subprocess against a temp git repo, with a STUB auditor (so no live
  * model is needed) that echoes canned JSON. Verifies the full path: diff →
- * audit → ledger, plus change-detection and the single-flight no-op. Run: `node --test`.
+ * audit → ledger, the per-repo opt-in gate, change-detection, and the
+ * single-flight no-op. Run: `node --test`.
  */
 
 const { test } = require('node:test');
@@ -36,6 +37,9 @@ const writeStub = (/** @type {string} */ dir) => {
   return stub;
 };
 
+/** Opt the repo in to auto-audit (what running /artisan:review would do). */
+const activate = (/** @type {string} */ dir) => fs.mkdirSync(path.join(dir, '.artisan'), { recursive: true });
+
 /** Init a git repo with one committed file and a clean tree (no diff vs HEAD). */
 const initRepo = (/** @type {string} */ dir) => {
   gitIn(dir, 'git init -q && git config user.email a@b.c && git config user.name t');
@@ -55,10 +59,11 @@ const runAudit = (/** @type {string} */ dir, /** @type {string} */ stubPath) =>
     env: { ...process.env, ARTISAN_AUDITOR_BIN: 'node', ARTISAN_AUDITOR_ARGS: stubPath },
   });
 
-test('run-audit: diff → stub auditor → ledger written', () =>
+test('run-audit: activated repo with a diff → stub auditor → ledger written', () =>
   withTempDir(async (dir) => {
     const stub = writeStub(dir);
     initRepoWithDiff(dir);
+    activate(dir);
 
     runAudit(dir, stub);
 
@@ -69,10 +74,20 @@ test('run-audit: diff → stub auditor → ledger written', () =>
     assert.match(fs.readFileSync(path.join(dir, '.artisan', 'hook.log'), 'utf8'), /audit: done/);
   }));
 
+test('run-audit: un-activated repo (no .artisan) is skipped even with a diff', () =>
+  withTempDir(async (dir) => {
+    const stub = writeStub(dir);
+    initRepoWithDiff(dir); // diff present, but NOT activated
+
+    runAudit(dir, stub);
+    assert.equal(fs.existsSync(path.join(dir, '.artisan')), false);
+  }));
+
 test('run-audit: second run with an unchanged diff is skipped (no re-audit)', () =>
   withTempDir(async (dir) => {
     const stub = writeStub(dir);
     initRepoWithDiff(dir);
+    activate(dir);
 
     runAudit(dir, stub);
     runAudit(dir, stub); // same diff → should skip
@@ -82,10 +97,11 @@ test('run-audit: second run with an unchanged diff is skipped (no re-audit)', ()
     assert.match(fs.readFileSync(path.join(dir, '.artisan', 'hook.log'), 'utf8'), /diff unchanged — skipped/);
   }));
 
-test('run-audit: no diff → skipped, no ledger created', () =>
+test('run-audit: activated repo with no diff → skipped, no ledger created', () =>
   withTempDir(async (dir) => {
     const stub = writeStub(dir);
     initRepo(dir); // clean tree, no diff
+    activate(dir);
 
     runAudit(dir, stub);
     assert.equal(fs.existsSync(path.join(dir, '.artisan', 'ledger.md')), false);
