@@ -9,65 +9,63 @@
  * if it has a direction or open findings, emits them as `additionalContext` so the
  * auditor's standing concerns are re-grounded into the session every turn. This is
  * the decay cure: the principles and findings stay present even as the conversation
- * grows. It is read-only and fast; it never blocks the turn on anything expensive.
+ * grows.
+ *
+ * Robustness: the entire body is wrapped so this hook can NEVER disrupt a prompt.
+ * The heavy modules are required inside the try, so even a load-time failure (e.g.
+ * an old Node that can't parse newer syntax) degrades to a silent no-op + a best-
+ * effort log line rather than a visible hook error. It always exits 0.
  */
 
-const fs = require('fs');
-const { renderInjection } = require('../lib/ledger');
-const { readLedger, ledgerPath } = require('../lib/ledger-store');
-
 /**
- * @what Reads the hook's JSON payload from stdin.
- * @how Reads fd 0 synchronously; returns an empty string if stdin is closed or unreadable.
- * @why Claude Code delivers hook input as JSON on stdin; we need the `cwd` to locate the project ledger.
- *
- * @returns {string} The raw stdin contents, or "" when unavailable.
- *
- * @sideeffects Reads from file descriptor 0 (stdin).
- * @systemlayer Utility
- * @domain hooks, artisan-ledger
- * @tags hook, stdin, read, input
- */
-function readStdin() {
-  try {
-    return fs.readFileSync(0, 'utf8');
-  } catch {
-    return '';
-  }
-}
-
-/**
- * @what Injects the project ledger's open findings as additional context for the upcoming prompt.
- * @how Parses the stdin payload for `cwd`, reads that project's ledger, renders it for injection, and — when non-empty — prints the UserPromptSubmit `additionalContext` JSON; otherwise prints nothing.
- * @why Re-grounding the session in standing findings each turn is what keeps the auditor's guidance from decaying out of context.
+ * @what Injects the project ledger's open findings as additional context, never disrupting the prompt.
+ * @how Parses stdin for `cwd`, then inside a guarded block requires the ledger modules, reads and renders the ledger, logs the firing, and prints the UserPromptSubmit `additionalContext` JSON when non-empty; any failure is caught, logged best-effort, and swallowed.
+ * @why A hook on every prompt must be bulletproof — a missing/old Node, a malformed ledger, or any unexpected error must degrade to "no injection" rather than a user-facing hook error.
  *
  * @returns {void}
  *
- * @sideeffects Reads stdin and the ledger file; writes JSON to stdout.
+ * @sideeffects Reads stdin and the ledger file; appends to the hook log; writes JSON to stdout.
  * @systemlayer Utility
  * @domain hooks, artisan-ledger
  * @tags hook, inject, context, userpromptsubmit, decay
  */
 function main() {
-  let cwd = process.cwd();
+  var cwd = process.cwd();
   try {
-    const input = JSON.parse(readStdin());
+    var fs = require('fs');
+    var input = JSON.parse(fs.readFileSync(0, 'utf8'));
     if (input && typeof input.cwd === 'string') cwd = input.cwd;
-  } catch {
-    // No/invalid stdin — fall back to process.cwd().
+  } catch (stdinErr) {
+    // No or invalid stdin — fall back to process.cwd().
   }
 
-  const ledger = readLedger(ledgerPath(cwd));
-  if (!ledger) return;
+  try {
+    var ledgerMod = require('../lib/ledger');
+    var store = require('../lib/ledger-store');
+    var log = require('../lib/hook-log').logLine;
 
-  const context = renderInjection(ledger);
-  if (!context) return;
+    var ledger = store.readLedger(store.ledgerPath(cwd));
+    if (!ledger) return; // no ledger → nothing to inject, nothing to log
 
-  process.stdout.write(
-    JSON.stringify({
-      hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: context },
-    })
-  );
+    var openCount = ledgerMod.openFindings(ledger).length;
+    var context = ledgerMod.renderInjection(ledger);
+    log(cwd, 'UserPromptSubmit: ' + openCount + ' open finding(s); injected ' + (context ? openCount + ' item(s)' : 'nothing'));
+    if (!context) return;
+
+    process.stdout.write(
+      JSON.stringify({
+        hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: context },
+      })
+    );
+  } catch (err) {
+    try {
+      var msg = err instanceof Error ? err.message : String(err);
+      require('../lib/hook-log').logLine(cwd, 'UserPromptSubmit ERROR: ' + msg);
+    } catch (logErr) {
+      // best-effort only
+    }
+    // Never disrupt the prompt: fall through and exit 0.
+  }
 }
 
 main();

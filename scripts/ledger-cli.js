@@ -19,6 +19,7 @@
 const fs = require('fs');
 const { applyUpdate, coerceUpdate, openFindings, serialize } = require('./lib/ledger');
 const { ledgerPath, readLedger, ensureLedger, writeLedger } = require('./lib/ledger-store');
+const { logLine } = require('./lib/hook-log');
 
 /**
  * @typedef {Object} CliOptions
@@ -80,7 +81,7 @@ function cmdShow(opts) {
  * @param {CliOptions} opts Parsed CLI options; updateFile is required.
  * @returns {void}
  *
- * @sideeffects Reads the update file and ledger from disk, writes the ledger, and writes a summary to stdout.
+ * @sideeffects Reads the update file and ledger from disk, writes the ledger, appends to the hook log, and writes a summary to stdout.
  * @systemlayer Utility
  * @domain artisan-ledger, cli
  * @tags cli, apply, update, merge, persist
@@ -100,8 +101,10 @@ function cmdApply(opts) {
   const closed = (update.close || []).filter((c) =>
     before.findings.some((f) => f.id === c.id && f.status === 'open')
   ).length;
+  const open = openFindings(after).length;
+  logLine(opts.project, `review applied: +${added} finding(s), ${closed} closed, ${open} open`);
   process.stdout.write(
-    `applied: +${added} finding(s), ${closed} closed, cursor ${after.meta.cursor}; ${openFindings(after).length} open\n`
+    `applied: +${added} finding(s), ${closed} closed, cursor ${after.meta.cursor}; ${open} open\n`
   );
 }
 

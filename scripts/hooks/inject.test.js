@@ -9,6 +9,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
@@ -33,6 +34,9 @@ test('inject hook emits additionalContext for a ledger with open findings', () =
     assert.equal(parsed.hookSpecificOutput.hookEventName, 'UserPromptSubmit');
     assert.match(parsed.hookSpecificOutput.additionalContext, /boom/);
     assert.match(parsed.hookSpecificOutput.additionalContext, /Direction: Build the gate/);
+
+    const log = fs.readFileSync(path.join(dir, '.artisan', 'hook.log'), 'utf8');
+    assert.match(log, /UserPromptSubmit: 1 open finding\(s\); injected 1 item\(s\)/);
   }));
 
 test('inject hook stays silent when there is no ledger', () =>
