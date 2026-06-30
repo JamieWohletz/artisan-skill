@@ -25,6 +25,7 @@ const { logLine } = require('./lib/hook-log');
 const LOCK_STALE_MS = 10 * 60 * 1000;
 const AUDIT_TIMEOUT_MS = 5 * 60 * 1000;
 const MAX_BUFFER = 16 * 1024 * 1024;
+const MAX_NEW_FILE_BYTES = 256 * 1024;
 
 /**
  * @what Resolves the target project directory from argv.
@@ -45,24 +46,49 @@ function parseProject(argv) {
 }
 
 /**
- * @what Returns the working-tree diff against HEAD for a project.
- * @how Runs `git diff HEAD` in the project; returns "" if git fails (no repo / no commits).
- * @why The diff is the ground truth the auditor judges; a non-git or empty repo simply yields nothing to audit.
+ * @what Returns the work-in-progress for a project: tracked changes vs HEAD plus the contents of new untracked files.
+ * @how Runs `git diff HEAD` for tracked changes, then `git ls-files --others --exclude-standard` to list untracked (gitignore-respecting) files and appends each one's contents as a "new file" section, skipping the auditor's own `.artisan/` state plus binary or oversized files; returns "" if the base git call fails.
+ * @why `git diff HEAD` omits untracked files, so brand-new files — a large share of real work (new modules, functions, tests) — would otherwise be invisible to the auditor. Including them is essential for reviewing in-progress feature work; reading them (rather than `git add -N`) avoids mutating the developer's index.
  *
  * @param {string} project The project directory.
- * @returns {string} The diff text, or "" when unavailable.
+ * @returns {string} The combined tracked-diff + new-file text, or "" when unavailable.
  *
- * @sideeffects Runs git via execSync (reads the repo).
+ * @sideeffects Runs git via execSync and reads untracked files via fs (reads the repo; no writes).
  * @systemlayer Data Layer
  * @domain auditor, git
- * @tags audit, git, diff
+ * @tags audit, git, diff, untracked, new-files
  */
 function getDiff(project) {
+  let out;
   try {
-    return execSync('git diff HEAD', { cwd: project, encoding: 'utf8', maxBuffer: MAX_BUFFER });
+    out = execSync('git diff HEAD', { cwd: project, encoding: 'utf8', maxBuffer: MAX_BUFFER });
   } catch (err) {
     return '';
   }
+  try {
+    const untracked = execSync('git ls-files --others --exclude-standard', {
+      cwd: project,
+      encoding: 'utf8',
+      maxBuffer: MAX_BUFFER,
+    })
+      .split('\n')
+      .filter(Boolean);
+    for (const rel of untracked) {
+      if (rel.startsWith('.artisan/')) continue; // never feed our own ledger/log back to the auditor
+      const full = path.join(project, rel);
+      try {
+        if (fs.statSync(full).size > MAX_NEW_FILE_BYTES) continue;
+        const content = fs.readFileSync(full, 'utf8');
+        if (content.includes('\u0000')) continue; // skip binary
+        out += `\n\n=== new file: ${rel} ===\n${content}`;
+      } catch (fileErr) {
+        // unreadable file — skip it
+      }
+    }
+  } catch (lsErr) {
+    // ls-files failed — fall back to the tracked diff only
+  }
+  return out;
 }
 
 /**
