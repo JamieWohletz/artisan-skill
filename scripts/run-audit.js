@@ -23,7 +23,7 @@ const { ledgerPath, ensureLedger, writeLedger } = require('./lib/ledger-store');
 const { logLine } = require('./lib/hook-log');
 
 const LOCK_STALE_MS = 10 * 60 * 1000;
-const AUDIT_TIMEOUT_MS = 3 * 60 * 1000;
+const AUDIT_TIMEOUT_MS = 5 * 60 * 1000;
 const MAX_BUFFER = 16 * 1024 * 1024;
 
 /**
@@ -120,8 +120,8 @@ function releaseLock(lockFile) {
 
 /**
  * @what Invokes the configured auditor with the prompt on stdin and returns its stdout.
- * @how Runs ARTISAN_AUDITOR_BIN (default "claude") with ARTISAN_AUDITOR_ARGS (default "-p"), piping the prompt to stdin, under a timeout.
- * @why Isolating and parameterizing the model call lets the orchestration be tested with a stub and keeps the (uncertain) headless invocation in one place.
+ * @how Runs ARTISAN_AUDITOR_BIN (default "claude") with ARTISAN_AUDITOR_ARGS (default "-p --model sonnet" — a fast model, since the default Opus is too slow for per-turn auditing and was timing out), piping the prompt to stdin, under a timeout.
+ * @why Isolating and parameterizing the model call lets the orchestration be tested with a stub and keeps the (uncertain) headless invocation in one place; a fast model keeps each background audit well under the timeout and cheap.
  *
  * @param {string} prompt The full auditor prompt.
  * @returns {string} The auditor's stdout.
@@ -129,11 +129,11 @@ function releaseLock(lockFile) {
  * @sideeffects Spawns the auditor subprocess.
  * @systemlayer Data Layer
  * @domain auditor, process
- * @tags audit, claude, subprocess, headless
+ * @tags audit, auditor, claude, subprocess, headless
  */
 function runAuditor(prompt) {
   const bin = process.env.ARTISAN_AUDITOR_BIN || 'claude';
-  const args = (process.env.ARTISAN_AUDITOR_ARGS || '-p').split(' ').filter(Boolean);
+  const args = (process.env.ARTISAN_AUDITOR_ARGS || '-p --model sonnet').split(' ').filter(Boolean);
   return execFileSync(bin, args, {
     input: prompt,
     encoding: 'utf8',
