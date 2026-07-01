@@ -17,7 +17,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync, execFileSync } = require('child_process');
-const { hashDiff, extractJson, buildAuditorPrompt } = require('./lib/audit-runner');
+const { hashDiff, extractJson, buildAuditorPrompt, isSensitivePath } = require('./lib/audit-runner');
 const { coerceUpdate, applyUpdate, openFindings, serialize } = require('./lib/ledger');
 const { ledgerPath, ensureLedger, writeLedger } = require('./lib/ledger-store');
 const { logLine } = require('./lib/hook-log');
@@ -47,8 +47,8 @@ function parseProject(argv) {
 
 /**
  * @what Returns the work-in-progress for a project: tracked changes vs HEAD plus the contents of new untracked files.
- * @how Runs `git diff HEAD` for tracked changes, then `git ls-files --others --exclude-standard` to list untracked (gitignore-respecting) files and appends each one's contents as a "new file" section, skipping the auditor's own `.artisan/` state plus binary or oversized files; returns "" if the base git call fails.
- * @why `git diff HEAD` omits untracked files, so brand-new files — a large share of real work (new modules, functions, tests) — would otherwise be invisible to the auditor. Including them is essential for reviewing in-progress feature work; reading them (rather than `git add -N`) avoids mutating the developer's index.
+ * @how Runs `git diff HEAD` for tracked changes, then `git ls-files --others --exclude-standard` to list untracked (gitignore-respecting) files and appends each one's contents as a "new file" section, skipping the auditor's own `.artisan/` state, sensitive files (`.env`/keys/credentials, via isSensitivePath), and binary or oversized files; returns "" if the base git call fails.
+ * @why `git diff HEAD` omits untracked files, so brand-new files — a large share of real work (new modules, functions, tests) — would otherwise be invisible to the auditor. Including them is essential for reviewing in-progress feature work; reading them (rather than `git add -N`) avoids mutating the developer's index. Sensitive files (secrets) are excluded via isSensitivePath so they never reach the model.
  *
  * @param {string} project The project directory.
  * @returns {string} The combined tracked-diff + new-file text, or "" when unavailable.
@@ -56,7 +56,7 @@ function parseProject(argv) {
  * @sideeffects Runs git via execSync and reads untracked files via fs (reads the repo; no writes).
  * @systemlayer Data Layer
  * @domain auditor, git
- * @tags audit, git, diff, untracked, new-files
+ * @tags audit, git, diff, untracked, new-files, secrets
  */
 function getDiff(project) {
   let out;
@@ -75,6 +75,7 @@ function getDiff(project) {
       .filter(Boolean);
     for (const rel of untracked) {
       if (rel.startsWith('.artisan/')) continue; // never feed our own ledger/log back to the auditor
+      if (isSensitivePath(rel)) continue; // never read secrets (.env, keys, credentials) into the prompt
       const full = path.join(project, rel);
       try {
         if (fs.statSync(full).size > MAX_NEW_FILE_BYTES) continue;

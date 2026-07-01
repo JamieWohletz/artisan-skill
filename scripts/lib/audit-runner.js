@@ -95,4 +95,28 @@ function buildAuditorPrompt(template, ledgerMarkdown, diff) {
   );
 }
 
-module.exports = { hashDiff, extractJson, buildAuditorPrompt };
+/**
+ * @what Decides whether an untracked path is too sensitive to read into the audit prompt.
+ * @how Tests the basename (lowercased) against secret-bearing patterns: any `.env*`, private-key/cert extensions (pem/key/p12/pfx/keystore/jks/asc/ppk), SSH private keys (id_rsa/dsa/ecdsa/ed25519), and names containing "secret" or "credential".
+ * @why getDiff reads untracked file *contents* and sends them to a model; a stray untracked `.env` or key file would leak secrets. This is a hard exclusion, independent of the repo's .gitignore.
+ *
+ * @param {string} rel The repo-relative path of an untracked file.
+ * @returns {boolean} True if the file must not be read into the prompt.
+ *
+ * @sideeffects None
+ * @systemlayer Utility
+ * @domain auditor, security
+ * @tags audit, security, secrets, exclusion, env
+ */
+function isSensitivePath(rel) {
+  const base = (rel.split('/').pop() || '').toLowerCase();
+  return (
+    base.startsWith('.env') ||
+    /\.(pem|key|p12|pfx|keystore|jks|asc|ppk)$/.test(base) ||
+    /^id_(rsa|dsa|ecdsa|ed25519)$/.test(base) ||
+    base.includes('secret') ||
+    base.includes('credential')
+  );
+}
+
+module.exports = { hashDiff, extractJson, buildAuditorPrompt, isSensitivePath };

@@ -91,6 +91,21 @@ test('activated repo whose only change is a NEW untracked file → still audited
     );
   }));
 
+test('activated repo whose only untracked file is a secret (.env) → skipped, not sent to the model', () =>
+  withTempDir(async (base) => {
+    const { repo, stub } = setup(base);
+    initRepo(repo); // clean tracked tree
+    activate(repo);
+    fs.writeFileSync(path.join(repo, '.env'), 'SECRET=hunter2\n'); // untracked secret
+
+    runAudit(repo, stub);
+    assert.equal(
+      fs.existsSync(path.join(repo, '.artisan', 'ledger.md')),
+      false,
+      'a secret-only change must not trigger an audit — .env must never reach the model'
+    );
+  }));
+
 test('un-activated repo (no .artisan) is skipped even with a diff', () =>
   withTempDir(async (base) => {
     const { repo, stub } = setup(base);
