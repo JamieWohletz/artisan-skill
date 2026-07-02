@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "artisan-skill",
+  "owner": {
+    "name": "Jamie Wohletz"
+  },
+  "description": "The artisan engineering skill, packaged as a Claude Code plugin.",
+  "plugins": [
+    {
+      "name": "artisan",
+      "source": "./",
+      "description": "Write code like a true software engineering artisan — a collaborative, Socratic engineering workflow."
+    }
+  ]
+}

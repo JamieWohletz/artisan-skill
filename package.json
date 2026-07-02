@@ -1,0 +1,15 @@
+{
+  "name": "artisan-skill",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Tooling for the artisan Claude Code plugin (ledger, auditor, hooks).",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test \"scripts/**/*.test.js\"",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  }
+}
