@@ -206,3 +206,50 @@ _Runtime decision (settled): Node, no deps, `// @ts-check` + JSDoc; `node --test
 - **Slice 6** — polish (optional `Stop` opt, config, uninstall verify, README).
 
 **Known follow-ups:** the `/artisan:review` install path assumes scripts resolve via the skill's base dir / `${CLAUDE_PLUGIN_ROOT}` — confirm during the live `/plugin install` smoke test (which only the user can run).
+
+---
+
+# V2 — Live-test learnings & redesign (2026-07-01)
+
+## ⭐ START HERE (handoff for a fresh session)
+V1 shipped and was run live on the **harmony** repo (real feature work: EN-12754 Symphony Autofill). It works end-to-end (9 audits, 0 errors) but the live test exposed **three structural flaws** that make it a weak reviewer in practice. V2 addresses them via **three pillars: TOOLS, COMPEL, DEPTH.**
+
+- **State:** branch `feat/staff-engineer-auditor`, PR #1 (`JamieWohletz/artisan-skill`), last commit `368a7d3`. 41 tests, typecheck clean. V1 = Slices 1–4 (plugin + ledger + `/artisan:review` + injection + Stop auto-audit).
+- **Evidence:** harmony session transcript `~/.claude/projects/-Users-austinmueller-Git-harmony/3a2598f1-*.jsonl`; harmony ledger/log at `harmony/.artisan/`.
+- **Build order for V2:** COMPEL and TOOLS first (co-priority), then DEPTH, then cleanups.
+
+## What the live test proved
+The autonomous loop runs on real work: `Stop → detached claude -p → ledger → next-turn injection`. But its output was mostly 🟡/🟢/⚪ convention nits; it missed the mistakes that actually mattered, and even its correct findings were ignored.
+
+## Flaw 1 — Tool-less: cannot catch DUPLICATION (the #1 real mistake)
+- **Transcript evidence (main session, harmony):** the developer had to *manually* stop the agent from reinventing existing code — #17 "I am almost certain this exists already…", #19 "**YOU MUST VERIFY that you are not duplicating ANYTHING!! I have built COUNTLESS checks… and all of them have failed**", #21 "You're really going to make a pure passthrough function?"
+- Duplication is the developer's #1 recurring pain. The auto-audit is a **tool-less** `claude -p` over diff text — it structurally cannot search the codebase for existing implementations. It even admitted this in finding **F13** ("lower confidence since the sibling's source isn't in view here").
+- **Fix = TOOLS.**
+
+## Flaw 2 — COMPEL gap: caught findings are IGNORED (bigger than tools)
+- The auditor DID catch naming/convention drift: **F9** (planning doc says `wellAR`/"image well"), **F14/F22** (test files use banned "page"/"spread" book terminology). Injection fired every turn (hook.log: `injected N item(s)`).
+- **Verified 2026-07-01: the drift is STILL in harmony's code** (doc line 76 `wellAR`; test lines 39–47 `pageL/pageR`) and F9/F14/F22 are **still OPEN**. The main session received them every turn and never acted.
+- **Root cause:** the system *catches* and *surfaces* but never *compels*. Injected findings are passive advisory context; low-severity findings don't hit the only enforcement mechanism (the 🔴 gate); a goal-focused main session skims past them. 14+ findings piled up unaddressed.
+- **Lesson:** even a perfect auditor is theater if the main session ignores it. The V1 bet ("inject advisory + gate only 🔴") is disproven. Re-grounding keeps findings *present* (decay cured) but never *acted upon*.
+
+## Flaw 3 — DEPTH & coverage
+- The **Sonnet downgrade** (added to fix `ETIMEDOUT`) traded correctness depth for speed → findings skew to easy convention nits, almost no 🔴.
+- Audits take **2–4 min**; **~50% of Stop events were skipped** (single-flight lock) → mid-work states unreviewed, feedback lags.
+- The **full growing ledger** is fed into every audit prompt → bloat, slower, attention pulled from finding new issues.
+
+## V2 plan — three pillars
+1. **TOOLS** (fix Flaw 1): `run-audit.js` invokes `claude -p` **with tools enabled** (grep/read + `codebase-guardian` semantic search when present). The auditor prompt must **require a duplication/reuse search** before finishing (mirror harmony `pr-audit` Phase 2). Manual `/artisan:review` already has tools; make auto match.
+2. **COMPEL** (fix Flaw 2 — top priority): close the loop. Options to design:
+   - **Imperative injection** — reframe the injected block as a directive: "You have N open auditor findings; address or explicitly dismiss each before continuing," treated as a work queue, not an FYI.
+   - **Gate at commit/PR** — `PreToolUse` on `git commit` blocks on unresolved findings (not just 🔴) until triaged.
+   - **Require acknowledgment** — the main session must resolve/dismiss each finding (updating the ledger) so they can't silently accumulate.
+   - **Authority** — the plugin should instruct the main session (its own skill/CLAUDE.md guidance) that artisan findings are authoritative and must be acted on.
+3. **DEPTH/COVERAGE** (fix Flaw 3): revert to **Opus** (not Sonnet); raise the timeout for the tool-using agent; **coalesce instead of bare-skip** (re-audit the latest state if the diff changed during a run); **lean prompt** (send finding *keys* for dedup, not full evidence).
+
+## Deferred cleanups (artisan-skill's OWN code — surfaced by dogfooding)
+- **F2** — aggregate new-file byte cap in `getDiff` (per-file 256KB cap exists; add a running total).
+- **F6** — `isSensitivePath` should match directory components (nested secrets: `secrets/token`, `.ssh/*`), not just basename.
+- **F7** — `isSensitivePath` should also match `.env` **suffix** names (e.g. `production.env`), not only `.env*` prefixes.
+- **F4** — binary detection reads the whole file as utf8 before the null-byte check; read a prefix first.
+- **F9 (own)** — leave a marker in the prompt when a sensitive file was skipped, so the auditor isn't confused by the gap.
+- **F8 (own) — ALREADY DONE:** `isSensitivePath` has unit tests (this finding is stale).
