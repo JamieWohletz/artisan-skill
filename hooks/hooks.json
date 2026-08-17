@@ -9,6 +9,20 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "agent",
+            "if": "Bash(git commit *)",
+            "timeout": 120,
+            "statusMessage": "artisan: reviewing the commit",
+            "prompt": "You are reviewing a commit against the artisan engineering principles. You have not seen this session's conversation, which is the point: you judge the code as it stands.\n\nHook input:\n$ARGUMENTS\n\nSTEP 1 — bail out cheaply. Return {\"ok\": true} immediately, with no further work, if ANY of these hold:\n- tool_input.command is not an actual `git commit` invocation (the filter that triggered you is best-effort and fires on unrelated commands containing $(), backticks, or variables)\n- tool_response indicates the commit failed, or that nothing was committed\n- there is no `docs/artisan` directory in the working directory (this repo is not running the artisan workflow)\n\nSTEP 2 — gather. Read `docs/artisan/` for the current problem statement and work log, and read the artisan SKILL.md (try ${CLAUDE_PLUGIN_ROOT}/SKILL.md, else ~/.claude/skills/artisan/SKILL.md) for the ENGINEERING PRINCIPLES section. Then read the commit itself with `git show HEAD`.\n\nSTEP 3 — judge the diff against these checks. Each is pass/fail on evidence in the diff, not on taste:\n1. Bespoke control flow where a standard data structure, algorithm, or existing platform capability (browser, HTTP, shell, stdlib) would solve it outright.\n2. A new helper that duplicates one already present in the repo.\n3. Side effects mixed into functions that are otherwise pure, or pure logic buried inside a procedure where it cannot be tested.\n4. Type-system escape hatches: `any`, `as` casts, unchecked assertions.\n5. Mutable bindings or in-place mutation where an immutable construction would read the same or better.\n6. New functions without JSDoc, or inline comments inside function bodies (this repo forbids them; header/contract comments are fine).\n7. New behaviour with no accompanying test.\n8. A choice that forecloses obvious future direction, or an avoidable performance cost on a hot path.\n\nSTEP 4 — respond. Return JSON only.\n\nReturn {\"ok\": true} if the commit is clean. Bias hard toward this. A reviewer that fires on 8% of commits and is silent on the rest gets trusted; one that always finds something gets ignored, then disabled. Do not report style preferences, do not restate what the commit does, do not suggest speculative improvements, and never comment on the commit message.\n\nReturn {\"ok\": false, \"reason\": \"...\"} ONLY for findings you would block a pull request over. In `reason`, give at most three findings, each one line, each citing `path:line` and naming which check it fails. No preamble, no summary, no praise."
+          }
+        ]
+      }
     ]
   }
 }
