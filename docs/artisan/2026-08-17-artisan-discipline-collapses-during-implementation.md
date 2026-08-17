@@ -1,0 +1,321 @@
+# Artisan discipline collapses during implementation
+
+Date: 2026-08-17
+
+## PROBLEM STATEMENT
+
+1. **WHAT is the problem:** Artisan's rules and workflow hold through problem definition and solution selection, then collapse once implementation begins — and some sessions never enter the governed phase at all.
+2. **WHY is it a problem:** Steps 2–4 name concrete decision points and produce an inspectable artifact; step 5 is a single paragraph covering hours of work with no per-slice checkpoints, so nothing detects or contests the drift.
+3. **For WHOM is it a problem:** Jamie, who does the most consequential work — writing code — in the least governed phase of the workflow.
+
+### How we got here
+
+The opening report was "the workflow is great, except it is quickly forgotten by Claude, and Claude falls back to wordy, uncanny-valley explanations." That statement bundled an observation (output degrades) with a diagnosis (memory decay). The diagnosis was treated as a hypothesis, not a premise.
+
+Two clarifying questions narrowed the symptom:
+
+- **Which failure mode?** → Both style drift and process drift, roughly equally.
+- **When does it break down?** → Gradually, over ~10+ turns.
+
+The stated onset ("gradual, turn-count driven") turned out to be the wrong frame. Turn count is correlated with the real boundary — the start of implementation — but is not the cause.
+
+### Method
+
+Seven prior `/artisan` sessions were located in `~/.claude/projects/` by searching transcript JSONL for the distinctive workflow phrase `PROVIDE OVERVIEW`. Compliance was measured directly from the transcripts rather than inferred:
+
+- **Rule 2 compliance** — fraction of substantive assistant messages (≥300 chars, to exclude one-line tool narration) beginning with a bold thesis (`^\*\*`).
+- **Rule 1 compliance** — `AskUserQuestion` calls per conversational turn.
+- **Verbosity** — mean character count of substantive messages.
+- **Workflow compliance** — presence of `docs/artisan/` writes, `TodoWrite` calls.
+
+Sessions were split at their **first non-doc `Write`/`Edit`** — the moment implementation begins — rather than at their midpoint.
+
+### Five whys (as run, including the branch that was wrong)
+
+1. **Why does the skill stop being applied?** Its content is injected once; everything after is newer and louder.
+2. **Why does newer win?** Nothing in the intervening context restates the skill.
+3. **Why does nothing restate it?** The skill produces no recurring artifact that must be re-read. The `docs/artisan` doc is written once and abandoned.
+4. **Why is it built that way?** It is written as a description of values ("elegance is paramount", "be concise", "don't be a sycophant") rather than a sequence of gates with pass/fail conditions.
+5. **Why does that matter?** Values have no observable failure state. Neither Claude nor tooling can detect a violation. Unverifiable instructions decay silently; verifiable ones fail loudly.
+
+This chain is directionally right but incomplete — it predicts uniform decay, and the measurements show a **phase transition**, not a slope.
+
+## HYPOTHESES TESTED
+
+### H1: Compliance decays gradually with turn count
+
+**HYPOTHESIS:** Rule adherence starts high and erodes as the conversation lengthens.
+
+**TEST:** Split each session into early/late halves by turn index; compare Rule 2 compliance and message length on substantive messages.
+
+**RESULTS:**
+
+| Session length | Rule 2 early → late | Avg chars early → late |
+|---|---|---|
+| 11 turns | 67% → 75% | 1676 → 1925 |
+| 85 turns | 14% → 13% | 1033 → 1172 |
+| 40 turns | 73% → 21% | 1589 → 1729 |
+| 27 turns | 100% → 67% | 2699 → 2150 |
+| 14 turns | 43% → 33% | 2344 → 1258 |
+| **mean** | **59% → 42%** | **1868 → 1647** |
+
+**CONFIDENCE:** Low — **partially refuted.** Decay exists (59% → 42%) but compliance is already poor at the start; there is no high plateau to decay *from*. Message length is flat-to-declining, contradicting "wordy". One session sat at 13–14% throughout and never varied. Turn count alone does not explain the pattern.
+
+### H2: The complaint is verbosity
+
+**HYPOTHESIS:** Responses get longer over a session, which is what reads as uncanny-valley filler.
+
+**TEST:** Mean character count of substantive messages, early vs. late halves.
+
+**RESULTS:** 1868 → 1647 chars. Slightly *shorter* late.
+
+**CONFIDENCE:** Low — **refuted under this split, later confirmed under the correct split (see H3).** The midpoint split straddles the code boundary and cancels the effect. The measurement was correct; the instrument was aimed at the wrong seam.
+
+### H3: Discipline collapses at the start of implementation
+
+**HYPOTHESIS:** Steps 2–4 are governed; step 5 is not. The failure boundary is the first line of code, not turn 10.
+
+**TEST:** Split each session at its first non-doc `Write`/`Edit`; compare Rule 2 compliance, `AskUserQuestion` rate, and message length across that boundary. n = 6 sessions.
+
+**RESULTS:**
+
+| | Rule 2 (bold thesis) | AskUserQuestion / turn | Avg chars |
+|---|---|---|---|
+| Pre-code | 69% | 0.59 | 1643 |
+| Post-code | 48% | 0.29 | **1967** |
+
+**CONFIDENCE:** High for direction, moderate for magnitude (n = 6). Rule 2 drops 30% relative. Rule 1 rate halves. Messages grow 20% longer. **Longer plus less structured is precisely the reported symptom** — verbosity is real, but only after implementation starts, which is why the turn-count framing found nothing.
+
+### H4: Compliance tracks verifiability, not emphasis
+
+**HYPOTHESIS:** Instructions that name a concrete artifact are followed; instructions that describe a quality are not, regardless of how forcefully they are stated.
+
+**TEST:** Compare adherence rates across three instruction classes in the same seven sessions.
+
+**RESULTS:**
+
+| Instruction | Form | Compliance |
+|---|---|---|
+| `docs/artisan/<doc>.md` | Names a path, produces an artifact | **6 / 7 sessions** |
+| `TodoWrite` ("you MUST") | Names a tool, no inspectable artifact | **0 / 7 sessions** |
+| "Be concise", "elegance is paramount", "don't be a sycophant" | Describes a quality | **~50%** |
+
+**CONFIDENCE:** High for the ordering, moderate for causation. Shouting `MUST` bought nothing. Naming a file path bought 86%. Caveat: the `TodoWrite` line was added in today's commit (`1202727`), so those seven sessions predate its current phrasing — its predecessor wording fared no better, but the current wording is untested.
+
+### H5: Artisan is outcompeted by other instructions
+
+**HYPOTHESIS:** Global `CLAUDE.md`, superpowers system-reminders, and the harness prompt issue style directives continuously while artisan states its rules once, so artisan loses on repetition.
+
+**TEST:** Not run. Would require sessions with and without the competing skill stack.
+
+**CONFIDENCE:** Unknown — plausible and untested. Retained as a contributing factor, not adopted as the primary cause. Noted that competing instructions use imperative shouting (`EXTREMELY-IMPORTANT`, `ABSOLUTELY MUST`) while artisan asks politely — though H4 suggests emphasis is not what drives compliance anyway.
+
+## SECONDARY FINDINGS
+
+- **Two of six sessions issued their first code edit at turn 2.** The entire front half of the workflow — problem doc, five solutions, chosen solution — was skipped outright. This is a distinct and more severe failure than drift: those sessions never entered the governed phase.
+- **`AskUserQuestion` clusters in steps 2–4 and evaporates afterward.** One 85-turn session made 29 calls, nearly all before turn 12. Rule 1 says "always", but only steps 2–4 describe decision points; step 5 gives the rule nothing to attach to.
+- **One session (85 turns) sat at 5% pre-code compliance.** Code is not its explanation. Something went wrong at invocation. Unexplained; flagged for follow-up.
+- **The `docs/artisan` doc is written once and never re-read.** It is the skill's only durable artifact and it plays no role after step 2.
+
+## SOLUTIONS
+
+### Inversion first
+
+Asked: how would we make artisan collapse *faster*? Answer:
+
+- Put every rule in one long file, read once, never referenced again
+- State rules as abstract prohibitions with no observable failure condition
+- Give the longest, highest-stakes phase the shortest instruction — one paragraph
+- Produce no recurring artifact that forces re-reading
+- Let code editing begin before the workflow's gates have been passed
+
+That list is a description of the current `SKILL.md`. The inversion invented nothing; it read the file back.
+
+### The precedent that constrains every out-of-band option
+
+Codebase Guardian is a `PreToolUse` hook on `Edit|Write` that ran headless Claude on every edit. Its logs: **6734 ALLOW / 548 DENY** (92.5% no-op), median **~16s per edit**, outliers to 45s. It was disabled on 2026-08-17 (`settings.json` matcher renamed to `DISABLED_2026_08_17_restore_to__Edit|Write`). Roughly 30 hours of cumulative waiting to catch 548 issues. Any solution that puts an LLM in the per-edit path inherits this math.
+
+### Cost model that makes a per-step reviewer viable
+
+| | commits | code edits | edits/commit |
+|---|---|---|---|
+| 6 sessions | 56 | 452 | **8.1** |
+
+Reviewing per **commit** rather than per **edit** is 8x cheaper. At Guardian's ~16s: ~15 min across all six sessions (~2.5 min/session) versus 120 min. Gating on the step, not the edit, is what makes LLM review affordable. Reviewing a landed commit is also off the hot path — it cannot stall an edit mid-thought.
+
+### S1 — Slice gates (in-band restructure)
+
+Step 5 becomes an explicit repeating loop; each slice must append a fixed-schema WORK LOG entry before the next begins.
+
+- **Pro:** free, portable, zero latency; reuses the only mechanism measured at 86% (artifact at a named path). Gives Rule 1 a decision point to attach to at each slice boundary.
+- **Con:** still self-policed. Re-reading the doc re-injects the *problem*, not the *rules* — the WORK LOG schema would have to carry the checklist itself, which reintroduces the cargo-cult risk. The 86% figure comes from one file written once, early; extrapolating to twelve appends across forty turns is a stretch.
+
+### S2 — `UserPromptSubmit` rule-card injection
+
+A hook detects an active artisan session and injects a compact rule card as context every prompt. No LLM, ~5ms.
+
+- **Pro:** fixes the loudness asymmetry — artisan is stated once, superpowers is re-injected forever.
+- **Con:** tests H5, which was never validated. H4 suggests repetition is not what buys compliance. Token cost every turn.
+
+### S3 — `Stop`-hook style gate (deterministic)
+
+Regex check on turn end: substantive message not starting with `**` → block, forcing a rewrite. ~5ms.
+
+- **Pro:** real enforcement on the exact measured metric.
+- **Con:** severe Goodhart risk — produces thesis-shaped sentences without the thinking behind them. Optimizes the metric that was chosen for measurement, which is not the same as fixing the problem. Blind to process.
+
+### S4 — `PreToolUse` process gate (deterministic)
+
+Non-doc `Write`/`Edit` denied while the session's artisan doc still has empty SOLUTIONS / CHOSEN SOLUTION. A file read, ~5ms — not Guardian's 16s.
+
+- **Pro:** makes "first code edit at turn 2" structurally impossible; attacks the most severe finding.
+- **Con:** same surface just disabled. Needs an escape hatch or it becomes infuriating.
+
+### S5 — Phase-boundary reviewer subagent
+
+At each phase/slice boundary, a **fresh** subagent reads `SKILL.md` cold plus the diff, grades compliance, reports violations into context.
+
+- **Pro:** the reviewer has not drifted — this is the key property. It is not the degraded agent self-checking; it is an undrifted one checking. Sidesteps the Goodhart problem in S3. The only option that can judge the unjudgeable (is this diff elegant, are these five solutions actually distinct).
+- **Con:** Guardian's architecture. Tokens, latency, and the auditor can drift too. Requires a non-discretionary trigger or it decays like `TodoWrite` (0/7).
+
+## CHOSEN SOLUTION
+
+**S5, scoped to per-step review with a deterministic hook trigger.**
+
+Two review checkpoints, each executed by a **fresh** subagent (headless `claude -p`) so the reviewer reads `SKILL.md` at full salience rather than through a degraded context:
+
+1. **Doc review** — fires when the artisan doc's SOLUTIONS and CHOSEN SOLUTION sections become populated. Reviews the problem statement, the five solutions, and the choice.
+2. **Commit review** — fires once per commit. Reads `SKILL.md` plus the commit diff, reviews for adherence to the engineering principles.
+
+### Decisions and rationale
+
+| Decision | Choice | Why |
+|---|---|---|
+| Trigger | `PostToolUse` hook | Discretionary invocation is the failure being fixed. "Spawn a reviewer each slice" is the same instruction shape that measured 0/7 for `TodoWrite`. The trigger must not be forgettable. |
+| Cadence | Per commit, not per edit | 8.1 edits/commit → 8x cheaper than Guardian, ~2.5 min/session. Off the hot path. |
+| Teeth | Report into context, agent must respond | Re-injection of an undrifted voice is itself the fix. A hard block risks Guardian's 92.5% false-positive experience. |
+| Scope | Process only for now | The style half (bold-thesis 69%→48%, +20% length) happens in prose that never reaches a diff. Deferred deliberately; revisit after measuring whether process discipline improves style as a side effect. |
+
+### Mechanics confirmed against the docs
+
+- `matcher` matches the **tool name only**. "Hook on `git commit`" is not directly expressible — match `Bash`, filter on `tool_input.command` in-script.
+- `PostToolUse` **cannot block via JSON** (`decision: "block"` unsupported); only exit 2 + stderr blocks. `hookSpecificOutput.additionalContext` is supported and is the correct envelope for report-into-context.
+- Guardian's source carries a hard-won lesson: the legacy exit-2 + stderr `{permissionDecision}` convention is classified as a non-blocking error, so denies never blocked. **JSON on stdout, exit 0.**
+- Hooks must **fail open** — a broken reviewer must never wedge a session.
+
+### Deferred
+
+- **S1 (slice gates)** — cheap and complementary; revisit if the reviewer alone does not restore step-5 discipline.
+- **S4 (process gate)** — directly addresses sessions that began editing at turn 2; deferred to keep the first increment small.
+- **S3 (style gate)** — rejected for now on Goodhart risk.
+- **Style reviewer** — deferred per the scope decision above.
+- **The 85-turn session at 5% pre-code compliance** — unexplained by any chosen solution. Open question.
+
+## REVISION — findings that changed the plan after CHOSEN SOLUTION was written
+
+Three capabilities were absent from all five solutions above because they were not known when those were drafted. They materially change the design.
+
+### `MessageDisplay` hook event
+
+Fires while assistant message text is displayed. No matcher, always fires, 10s timeout (lowered from the default).
+
+- **Input** carries `delta` (newly displayed lines), `message_id`, `index`, `final`. In `claude -p` and Agent SDK runs it fires once per message with the whole text.
+- **Output** supports `displayContent`, which replaces *that batch's delta* on screen. `systemMessage` and `continue` are discarded for this event, and it has no decision control — it cannot block a message or alter the transcript.
+- **Consequence:** the style half of the problem, deferred as uncoverable by a commit reviewer, becomes cheaply detectable. A regex on the final batch can flag a missing thesis line and surface it *to the user*, with no model round-trip and no tokens.
+
+### Agent hooks (`type: "agent"`)
+
+Claude Code spawns a subagent natively with the hook's JSON input; it can use Read/Grep/Glob and returns `{ok: true}` or `{ok: false, reason}`. On `ok: false` it behaves like a prompt hook with `continueOnBlock: true` — the reason reaches Claude and work continues.
+
+- **Consequence:** "spin up a fresh subagent per step" is a configuration entry, not code. The chosen solution's teeth (report into context, do not block) are the default behavior.
+
+### `TodoWrite` is unavailable on this model — a third failure class
+
+`TodoWrite` and all four Task tools are excluded on Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 and later in Claude Code v2.1.233+, unless opted in via `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`.
+
+This revises **H4**. The 0/7 compliance was read as "MUST buys nothing without an artifact." The sharper reading: **the instruction was unsatisfiable**. Commit `1202727` mandated a tool that does not exist on the model in use, and nothing reported the impossibility — it failed silently, exactly like the unverifiable rules.
+
+That is a third failure class, distinct from drift and from skipping:
+
+| Class | Example | Detectable today |
+|---|---|---|
+| Drift | Rule 2 decays 69% → 48% post-code | No |
+| Skipping | First code edit at turn 2 | No |
+| **Impossible** | `MUST use TodoWrite` on Opus 5 | **No** |
+
+**Resolved:** `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` added to `settings.json` (took effect immediately, no restart), and `SKILL.md` step 5 now names `TaskCreate`/`TaskUpdate`/`TaskList`/`TaskGet` and requires an explicit statement when the tools are unavailable rather than a silent substitution.
+
+### Guardian's "disable" never disabled `Write`
+
+The matcher `DISABLED_2026_08_17_restore_to__Edit|Write` contains regex characters, so it is treated as a regex — and `|` is alternation. It parses as `DISABLED_..._Edit` **OR** `Write`. `Edit` was disabled; `Write` never was, which is why doc edits passed while every script `Write` hit a ~16s Guardian validation.
+
+Fixed to `DISABLED_2026_08_17_restore_to__(Edit|Write)`. Same failure class again: a control that silently was not in force. Guardian's own source carries a comment about a previous instance of this exact category — its denies not actually denying.
+
+## WORK LOG
+
+### Slice 1 — MessageDisplay telemetry + live style marker (in progress)
+
+**Files:** `hooks/artisan-message-display.sh`, `hooks/test-artisan-message-display.sh`
+
+**Language decision — bash + `jq`, not TypeScript.** The initial recommendation was zero-dependency TypeScript (Node 22.22 runs `.ts` natively via type stripping, no build step). A benchmark overturned it:
+
+| runtime | per-invocation |
+|---|---|
+| `node` + TypeScript stripping | 56ms |
+| `node` + `.mjs` | 45ms |
+| `jq` | 7ms |
+| bash builtins | 4ms |
+
+This hook fires on *every streamed batch*. At ~10 batches per message that is ~560ms of process startup per message for TypeScript versus ~70ms for `jq`. Principles 3 (minimize footprint) and 10 (performance) beat principle 4 (lean on the type system) on a path this hot. Types are sacrificed deliberately, and the cost is noted: correctness rests on the component tests instead.
+
+**Design.** Non-final batches append the delta to a per-message accumulator and exit. Evaluation runs once, on the final batch: it computes `chars`, `is_substantive`, `has_thesis`, `filler`, appends a JSONL telemetry record, and returns `displayContent` (final delta + marker) only when a rule is violated.
+
+**Findings from the validation hook, all addressed:**
+
+- Accumulators leaked when a final batch never arrived (interrupted message, killed session) → `find -mmin +60 -delete` sweep on every invocation.
+- `message_id` went from untrusted JSON straight into a filesystem path that is appended to and `rm -f`'d → basename guard rejecting anything outside `[A-Za-z0-9._-]`, plus `.` and `..`.
+- The accumulator was unbounded while being slurped whole via `jq --rawfile` → 256KB cap checked before each append.
+- **Filler detection scanned code blocks** (flagged as a suggestion, but the most serious of the four): the message in this very session that *listed* the filler phrases would have flagged itself → `strip_code` removes fenced and inline code before the scan. There is a test for it.
+
+**Also fixed:** stderr noise on the first batch of every message. `wc -c < "$acc"` fails at the *redirection* layer when the file does not exist, so `2>/dev/null` on `wc` never suppressed it; guarded with `[ -f ]` instead. `jq` parse errors on malformed input silenced too. Both verified silent by direct invocation — the test suite passed throughout because it only asserted on stdout, which is a gap in the tests, not evidence the code was clean.
+
+**Tests:** 22 component tests, driving the hook exactly as Claude Code does (crafted JSON on stdin) against a throwaway `ARTISAN_HOME`. Covers non-final silence, accumulation across batches, thesis present/absent, the substantive threshold, filler in prose vs. inside a fence, path-traversal rejection, marker suppression outside an artisan project, and fail-open on malformed input.
+
+**The live style marker was built, smoke tested, and removed.** It appended a `⚠ artisan: …` line to the final delta via `displayContent` whenever a rule was violated. The verdict after using it: *"instantly annoying and offers no value."*
+
+That is the right call and it was foreseeable — the risk was flagged when it shipped ("if it's noise you'll disable it within a day, which would leave us exactly where we started"). Worth recording *why* it failed, because it generalises:
+
+- A marker fires **after** the message is already written and read. By the time it appears, the reader has absorbed the prose; the warning adds nothing they did not already perceive.
+- It reports a violation to the one party who cannot fix it. The user cannot rewrite the message; only the next message can improve, and nothing carries the signal forward.
+- It taxes every message to occasionally state the obvious.
+
+The hook is now **pure observation** — it never writes to stdout at all. Simpler, faster, and it cannot annoy anyone into disabling it. Whatever eventually addresses style has to act *before or during* generation, not decorate the output afterwards.
+
+**Repackaged as a plugin.** The first cut put the script in the repo but the registration in `~/.claude/settings.json` with a hardcoded absolute path — so a clone got inert code, and the skill was no longer self-contained. That was precisely the cost named as an argument *against* out-of-band solutions, then walked into anyway.
+
+Fixed by making the repo a plugin:
+
+- `.claude-plugin/plugin.json` — manifest
+- `hooks/hooks.json` — declares `MessageDisplay`, referencing `"${CLAUDE_PLUGIN_ROOT}"/scripts/artisan-message-display.sh`, so no absolute paths
+- `~/.claude/skills/artisan` repointed from the single `SKILL.md` to the **repo directory**, which auto-loads as `artisan@skills-dir` with no install step
+- The `MessageDisplay` entry removed from `~/.claude/settings.json` entirely
+
+Verified: `claude plugin list` reports `artisan@skills-dir … Status: ✔ loaded`.
+
+**Live verification.** Three telemetry records captured from real messages in this session:
+
+| chars | has_thesis | is_substantive | filler |
+|---|---|---|---|
+| 1935 | yes | yes | 0 |
+| 550 | **no** | yes | 0 |
+| 1333 | yes | yes | 0 |
+
+The middle record is a genuine Rule 2 violation committed while building the Rule 2 detector — 2/3 compliance in the session where compliance should be at its absolute peak. Consistent with the 59% early-session baseline, and the first evidence produced by measurement rather than archaeology.
+
+**Tests:** 21 component tests. The stdout-silence invariant is now asserted directly (including for a message that violates both rules), so a future change that reintroduces output fails the suite.
+
+**Deferred from this slice:**
+
+- Rule 1 (`AskUserQuestion`) compliance is not measurable from message text; it needs tool-call telemetry from a different event.
+- Verbosity is recorded (`chars`) but nothing acts on it — no threshold has been justified by evidence yet.
+- Whether telemetry should distinguish artisan from non-artisan sessions. It currently records everything with `cwd` and `session_id`, which is enough to separate them after the fact and avoids a detection heuristic in the hot path.
