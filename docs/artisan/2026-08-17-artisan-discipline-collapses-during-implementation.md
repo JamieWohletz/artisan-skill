@@ -319,3 +319,38 @@ The middle record is a genuine Rule 2 violation committed while building the Rul
 - Rule 1 (`AskUserQuestion`) compliance is not measurable from message text; it needs tool-call telemetry from a different event.
 - Verbosity is recorded (`chars`) but nothing acts on it — no threshold has been justified by evidence yet.
 - Whether telemetry should distinguish artisan from non-artisan sessions. It currently records everything with `cwd` and `session_id`, which is enough to separate them after the fact and avoids a detection heuristic in the hot path.
+
+### Slice 2 — agent-hook commit reviewer
+
+**File:** `hooks/hooks.json` (configuration only — no script)
+
+**Zero code.** `type: "agent"` spawns a fresh subagent natively, so the whole reviewer is a hook declaration and a prompt. The planned wrapper script that would have shelled out to `claude -p` was never needed.
+
+**Filtering.** `if` is a common field available to every hook type, so `"if": "Bash(git commit *)"` narrows a `Bash` matcher down to commits without a script. But the docs are explicit that this filter is **best-effort and fails open**: patterns naming more than the command name "run the hook anyway on `$()`, backticks, or `$VAR`". Since `$(...)` appears in a large share of commands, the prompt opens with a cheap bail-out — a false trigger costs one fast-model turn rather than a full review.
+
+**Dropped from the plan: per-SHA idempotency.** `PostToolUse` fires once per tool call, and one commit is one tool call, so there is nothing to deduplicate. `git commit --amend` produces a genuinely different commit that deserves a genuinely new review. This was over-design carried forward from the pre-agent-hook draft.
+
+**Rubric, not vibes.** Step 5 of the workflow already said "verify that the code adheres to our software engineering principles" and produced the compliance numbers in this document. Handing that sentence to a subagent verbatim would inherit its vagueness, so the prompt carries eight pass/fail checks derived from the principles: bespoke control flow, duplicated helpers, mixed side effects, type escape hatches, needless mutability, missing JSDoc / inline comments, untested behaviour, and foreclosed future direction.
+
+**Calibrated against Guardian's failure.** Guardian was 92.5% ALLOW at ~16s per edit and was switched off. The prompt therefore instructs a hard bias toward `ok: true`, forbids style preferences, speculative suggestions, restating the diff, and any comment on the commit message, and caps findings at three, each one line citing `path:line`. The reasoning is stated in the prompt itself: *a reviewer that fires on 8% of commits gets trusted; one that always finds something gets ignored, then disabled.*
+
+**Verified empirically, not assumed.**
+
+| Test | Result |
+|---|---|
+| Empty commit | silent (correct — nothing to review) |
+| `hooks.json` config commit | silent (correct) |
+| Deliberately bad `.ts` file | **all three planted defects found**, cited by `path:line` and rubric check |
+
+The positive control planted an `any[]` parameter with an `as any` cast, a hand-rolled index loop with a mutable accumulator, and a function with no JSDoc plus an inline comment. The reviewer named all three against checks 4, 1+5, and 6 respectively, with no preamble and no praise. Both control commits were then discarded with `git reset --hard`.
+
+**Two mechanics the docs left ambiguous, now settled:**
+
+- **Agent hooks can run `git`.** The documentation says only "tools like Read, Grep, and Glob"; the reviewer ran `git show HEAD` successfully.
+- **Plugin `hooks.json` does not hot-reload.** The identical configuration did nothing while declared in the plugin, and fired immediately when moved to `~/.claude/settings.json`. Plugin hook changes require a new session. `settings.json` hook changes take effect at once — the Guardian matcher fix in slice 1 also proved this.
+
+**Deferred from this slice:**
+
+- The reviewer's judgement quality is tested against one synthetic bad commit. Slice 4 should test it against real commits, including ones it should stay silent on, to measure the false-positive rate against Guardian's 7.5% baseline.
+- `${CLAUDE_PLUGIN_ROOT}` interpolation inside a `prompt` field is unverified; the prompt hedges with a fallback path to `~/.claude/skills/artisan/SKILL.md`.
+- Scoping is still the crude `docs/artisan` directory check, now expressed as a prompt instruction rather than a shell test.
