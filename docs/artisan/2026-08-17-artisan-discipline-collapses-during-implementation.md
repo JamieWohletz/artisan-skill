@@ -495,3 +495,13 @@ The failure mode matters more than the dependency. In `cmd -q ... && echo true |
 
 Five silences and two genuine blocks on real work, plus two correct catches on planted controls. Both real blocks were things this session had reasoned past rather than overlooked, which is the specific value of a reviewer that has not read the conversation.
 
+### Coverage gap - the reviewer only sees commits the agent makes
+
+`PostToolUse` fires on tool calls. The commit reviewer therefore sees a commit only when Claude runs `git commit` through the `Bash` tool. A commit typed by hand in a terminal produces no tool call and no review. Whether the `!` prefix inside Claude Code counts is untested; it is user-invoked, so the expectation is that it does not.
+
+Every reviewer firing recorded in this document was on an agent-issued commit.
+
+**This is judged acceptable rather than fixed.** The problem statement is about discipline collapsing during implementation, and implementation is the agent's work. Commits a human makes are the human's to judge. The gap is recorded because documentation must not imply that every commit in a repo gets reviewed - that would be an overclaim, and an overclaimed control is the failure class this document keeps running into.
+
+**Rejected alternative:** a git `pre-commit` hook in the repo would cover hand commits, but it fires for every committer and in CI, is a different mechanism with different failure modes, and addresses a problem that was never measured. Deferred unless a reason appears.
+
