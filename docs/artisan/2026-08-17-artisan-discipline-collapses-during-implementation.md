@@ -505,3 +505,22 @@ Every reviewer firing recorded in this document was on an agent-issued commit.
 
 **Rejected alternative:** a git `pre-commit` hook in the repo would cover hand commits, but it fires for every committer and in CI, is a different mechanism with different failure modes, and addresses a problem that was never measured. Deferred unless a reason appears.
 
+### Slice 5 - documentation
+
+**Files:** `README.md`, `SKILL.md`
+
+**Packaging verified from a clean session first.** With no artisan hooks in `~/.claude/settings.json` at all, a fresh session in this repo grew telemetry from 356 to 361 records and the commit reviewer ran on an agent-issued commit containing `export const x: any = 1`. The plugin declaration is therefore the sole live mechanism, and the documentation describes a path that has been walked.
+
+An incidental data point from that verification: the probe session recorded 0% thesis-first responses at a mean of 2325 characters - the longest of any session measured. It never invoked `/artisan`, so no rule applied to it, but it is a clean illustration of the ungoverned baseline sitting in the same project directory as an artisan session at 80%.
+
+**`README.md`** gains a measurement section carrying the 65%/47% table, what each hook does, where telemetry lands, and how to run the two analysis scripts. The install instruction needed no change: cloning into `~/.claude/skills/artisan` produces exactly the plugin directory Claude Code auto-loads.
+
+The section that took the most care is *What these hooks do not do*, stating four limits plainly: only agent-issued commits are reviewed, the report mixes artisan with non-artisan sessions, Rule 1 is invisible to live telemetry, and hook changes need a new session. An overclaimed control is the failure this document has hit three times - Guardian's denies that never denied, a matcher rename that never disabled `Write`, and a test suite that would have passed while testing nothing. Documentation that implies more coverage than exists would be the fourth.
+
+**`SKILL.md`** step 5 now says what to do when the reviewer objects: fix the finding or state plainly why it is wrong, and never write a slice up as complete while a finding stands unaddressed. This is written from evidence rather than principle. Both real blocks in this session were findings the session had reasoned past - the first arrived on a slice already declared complete, whose own work log recorded a defect that no test had been added for.
+
+**Deferred:**
+
+- `scripts/` and `tests/` ship inside the plugin directory. Harmless, but a future version might keep the distributed surface to `SKILL.md`, `hooks/`, and `scripts/`.
+- The README quotes 65%/47% from six sessions. Once artisan sessions accumulate under the hooks, that table should gain an after column, which is the verdict this project has deliberately not claimed yet.
+
