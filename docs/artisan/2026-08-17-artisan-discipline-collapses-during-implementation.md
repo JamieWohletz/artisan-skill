@@ -465,3 +465,33 @@ This was right, and it is the first time in this workflow that the tooling caugh
 
 - `scripts/artisan-report.sh` has no unit-level coverage of its `jq` expression beyond end-to-end assertions on synthetic telemetry. Acceptable: the `jq` program is the behaviour, and testing it through its output is testing the right thing.
 
+### Slice 4 second addendum - portability bug in the new tests
+
+The reviewer objected again, this time to the tests themselves:
+
+> `tests/report.test.sh:39` (and 45, 52, 59, 62, 65, 72) - check 1: all 7 output assertions invoke `ggrep` (Homebrew GNU grep), an undeclared non-POSIX dependency absent from the rest of the repo, when plain `grep -qE` matches these exact patterns; where it is missing the `&&` branch is skipped so the four assertions expecting "false" pass without testing anything.
+
+Correct on both counts, and the second count is the serious one.
+
+`ggrep` was used because the user's global instructions say to prefer it over `grep`. That instruction governs interactive shell use on a machine where Homebrew GNU grep is installed; it does not govern a committed test script that runs elsewhere. The distinction was not made, and the instruction was applied where it did not belong.
+
+The failure mode matters more than the dependency. In `cmd -q ... && echo true || echo false`, a missing `cmd` exits nonzero and falls into the `false` branch. Every assertion whose expected value is `"false"` would therefore pass on a machine without `ggrep` **while testing nothing at all** - a green suite proving the opposite of what it claims. That is the same class as the two earlier findings in this document: Guardian's denies that never denied, and the matcher rename that never disabled `Write`. A control that silently is not in force.
+
+**Fixed in two parts.** The symptom: `grep` throughout, with the patterns unchanged since they are POSIX ERE. The class: a preflight loop at the top of the suite that fails loudly if `grep`, `jq` or `python3` is missing, so a missing tool can never again be mistaken for a passing negative assertion.
+
+**Standing tally of what the reviewer has caught**, over 8 real commits:
+
+| Commit | Verdict |
+|---|---|
+| Slice 1 telemetry | silent |
+| Reviewer config | silent |
+| Slice 2 work log | silent |
+| Slice 3 fold-in | silent |
+| Slice 3 control record | silent |
+| Slice 4 scripts | **blocked** - untested measurement code |
+| Slice 4 tests | **blocked** - `ggrep` portability and vacuous passes |
+| Planted bad `.ts` file (discarded) | **blocked** - three defects |
+| Planted weak document (discarded) | **blocked** - five checks |
+
+Five silences and two genuine blocks on real work, plus two correct catches on planted controls. Both real blocks were things this session had reasoned past rather than overlooked, which is the specific value of a reviewer that has not read the conversation.
+

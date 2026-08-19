@@ -16,6 +16,16 @@ BASELINE="$ROOT/scripts/artisan-baseline.py"
 PASS=0
 FAIL=0
 
+# A missing tool would make `cmd -q ... && echo true || echo false` fall into
+# the false branch, so assertions expecting "false" would pass while testing
+# nothing. Fail loudly instead.
+for tool in grep jq python3; do
+  command -v "$tool" >/dev/null 2>&1 || {
+    printf 'required tool not found: %s\n' "$tool" >&2
+    exit 1
+  }
+done
+
 check() {
   local label="$1" expected="$2" actual="$3"
   if [ "$expected" = "$actual" ]; then
@@ -49,7 +59,7 @@ setup
 out=$(bash "$REPORT" 2>&1); rc=$?
 check "missing telemetry exits nonzero" "1" "$rc"
 check "missing telemetry explains itself" "true" \
-  "$(printf '%s' "$out" | ggrep -q 'No telemetry' && echo true || echo false)"
+  "$(printf '%s' "$out" | grep -q 'No telemetry' && echo true || echo false)"
 teardown
 
 # --- thesis share counts only substantive messages -------------------------
@@ -59,7 +69,7 @@ record s1 /repo/alpha 1000 false 0
 record s1 /repo/alpha 100 false 0
 out=$(bash "$REPORT")
 check "substantive count excludes short messages" "true" \
-  "$(printf '%s' "$out" | ggrep -qE 's1 +alpha +3 +2 +50%' && echo true || echo false)"
+  "$(printf '%s' "$out" | grep -qE 's1 +alpha +3 +2 +50%' && echo true || echo false)"
 teardown
 
 # --- a session of only short messages reports a dash, not 0% or an error ---
@@ -67,7 +77,7 @@ setup
 record s2 /repo/beta 50 false 0
 out=$(bash "$REPORT")
 check "no substantive messages reports a dash" "true" \
-  "$(printf '%s' "$out" | ggrep -qE 's2 +beta +1 +0 +-' && echo true || echo false)"
+  "$(printf '%s' "$out" | grep -qE 's2 +beta +1 +0 +-' && echo true || echo false)"
 teardown
 
 # --- cwd filter selects a subset -------------------------------------------
@@ -76,12 +86,12 @@ record s3 /repo/gamma 1000 true 0
 record s4 /repo/delta 1000 false 0
 out=$(bash "$REPORT" gamma)
 check "filter includes the matching session" "true" \
-  "$(printf '%s' "$out" | ggrep -q 'gamma' && echo true || echo false)"
+  "$(printf '%s' "$out" | grep -q 'gamma' && echo true || echo false)"
 check "filter excludes other sessions" "false" \
-  "$(printf '%s' "$out" | ggrep -q 'delta' && echo true || echo false)"
+  "$(printf '%s' "$out" | grep -q 'delta' && echo true || echo false)"
 out=$(bash "$REPORT" nothing-matches-this)
 check "unmatched filter says so" "true" \
-  "$(printf '%s' "$out" | ggrep -q 'No records match' && echo true || echo false)"
+  "$(printf '%s' "$out" | grep -q 'No records match' && echo true || echo false)"
 teardown
 
 # --- totals aggregate across sessions --------------------------------------
@@ -90,7 +100,7 @@ record s5 /repo/eps 1000 true 0
 record s6 /repo/zeta 1000 false 1
 out=$(bash "$REPORT")
 check "total row counts both sessions" "true" \
-  "$(printf '%s' "$out" | ggrep -qE 'TOTAL +2 sessions +2 +2 +50% +1' && echo true || echo false)"
+  "$(printf '%s' "$out" | grep -qE 'TOTAL +2 sessions +2 +2 +50% +1' && echo true || echo false)"
 teardown
 
 printf '\ncross-instrument agreement\n'
