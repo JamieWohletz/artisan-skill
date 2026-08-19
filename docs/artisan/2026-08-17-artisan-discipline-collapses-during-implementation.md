@@ -400,3 +400,46 @@ The control commit was then discarded. This matters beyond the rubric: the revie
 
 - The `Write`/`Edit` agent-hook tool limitation is worth reporting upstream; the tool list an agent hook advertises does not match what it can actually use.
 - Reviewer false-positive rate is unmeasured. Four real commits so far produced four silences and two loud responses to planted controls, which is the right shape but far too small a sample to compare against Guardian's 7.5% deny rate.
+
+### Slice 4 - report script and reproducible baseline
+
+**Files:** `scripts/artisan-report.sh`, `scripts/artisan-baseline.py`
+
+**Why this slice is not the verdict.** The question worth answering is whether the hooks improve artisan sessions, which needs artisan sessions recorded before and after. Only one session has run with the hooks so far, and it is the session that built them. This slice therefore builds the instrument that will answer the question in one command, and deliberately does not claim an answer.
+
+**`scripts/artisan-report.sh`** renders per-session compliance from `~/.artisan/telemetry.jsonl`: substantive message count, thesis share, filler count, mean length, newest session first, with an optional cwd substring filter.
+
+First real reading, 8 concurrent sessions, 345 messages:
+
+| session | project | substantive | thesis | filler | avg chars |
+|---|---|---|---|---|---|
+| `7f37248a` | **artisan-skill (running the hooks)** | 8 | **75%** | 0 | **1002** |
+| `ae281771` | main | 29 | 20% | 0 | 1419 |
+| `684a5b2d` | admin-purchased-edit-by | 30 | 10% | 1 | 1761 |
+| `a6865271` | main | 18 | 11% | 5 | 2084 |
+| `ed84b6df` | main | 18 | 5% | 0 | 1352 |
+| **total** | 8 sessions | 106 | 16% | 6 | |
+
+The artisan session runs at 75% thesis compliance against 5-20% elsewhere, and is the shortest-winded at 1002 mean characters against 1352-2084. **This is not evidence the hooks work.** Non-artisan sessions are under no obligation to lead with a thesis, so the contrast establishes only that the instrument discriminates artisan-shaped output from ordinary output. That is worth having, and it is not the claim.
+
+**`scripts/artisan-baseline.py`** reproduces the pre-hook figures from transcript JSONL. Until this slice, every baseline number in this document came from throwaway scripts in a scratchpad directory, so nothing here was reproducible and nobody could have checked it.
+
+Running it corrected one published figure. Excluding this session, the six prior sessions give:
+
+| | thesis | AskUserQuestion/turn | mean chars |
+|---|---|---|---|
+| Pre-code | **65%** | 0.59 | 1643 |
+| Post-code | **47%** | 0.29 | 1967 |
+
+The `AskUserQuestion` and character figures reproduce exactly. Thesis compliance is 65% / 47%, **not the 69% / 48% quoted in H3 and H4 above.** The original archaeology tested only whether a message began with `**`; both the telemetry hook and this script require a complete bold span, `^\*\*[^*]+\*\*`. The stricter figure is the correct one, and the two instruments now agree by construction rather than by coincidence. H3's direction and magnitude are unaffected: roughly a third of Rule 2 compliance is lost at the code boundary either way.
+
+**A defect found by using the tool.** The first version of the report computed a session name and never printed it, so every row was anonymous and the table could not distinguish this session from the historical ones - which is the single most important distinction it exists to draw. Fixed by adding the project column. Worth recording because the tests would never have caught it: the numbers were all correct.
+
+**This session's own figures are 93% pre-code and 75% post-code**, above every prior session on both sides. Stated with the caveat it deserves: n = 1, and the session being measured is the one that wrote the instrument.
+
+**Deferred:**
+
+- The before/after verdict, pending artisan sessions that run with the hooks and were not written by them.
+- Rule 1 compliance is measurable from transcripts (the baseline script does it) but not from live telemetry, because `MessageDisplay` sees prose and not tool calls. A `PostToolUse` counter would close the gap.
+- `artisan-baseline.py` includes the current session in its mean. The project column makes this visible rather than misleading, but a date or exclusion filter would make the comparison cleaner once there are sessions on both sides.
+
