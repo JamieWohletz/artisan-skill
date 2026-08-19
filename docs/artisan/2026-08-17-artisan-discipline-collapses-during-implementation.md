@@ -443,3 +443,25 @@ The `AskUserQuestion` and character figures reproduce exactly. Thesis compliance
 - Rule 1 compliance is measurable from transcripts (the baseline script does it) but not from live telemetry, because `MessageDisplay` sees prose and not tool calls. A `PostToolUse` counter would close the gap.
 - `artisan-baseline.py` includes the current session in its mean. The project column makes this visible rather than misleading, but a date or exclusion filter would make the comparison cleaner once there are sessions on both sides.
 
+### Slice 4 addendum - the reviewer blocked this slice, correctly
+
+**Files:** `tests/baseline.test.py`, `tests/report.test.sh`, `tests/run-all.sh`
+
+The commit that added the two measurement scripts drew an objection:
+
+> `scripts/artisan-baseline.py:1` and `scripts/artisan-report.sh:1` - check 7: 292 lines of new measurement logic ship with no test, though `tests/message-display.test.sh` sets the precedent for the sibling script and `classify_text`/`summarise`/`format_report` are already pure and directly testable; the commit's claim that both instruments agree on the thesis pattern by construction is exactly what a test should pin, since the corrected 65%/47% figures now rest on untested code.
+
+This was right, and it is the first time in this workflow that the tooling caught something the session had talked itself past. The slice had been written up as complete with a defect already recorded in its own work log - the missing project column - and no test added in response. The reviewer noticed the inconsistency between the recorded defect and the absent coverage.
+
+**What was added:**
+
+- `tests/baseline.test.py` - 23 unit tests over the pure functions. The strictness of the thesis pattern is pinned explicitly, including the unclosed-marker case that caused the 69% to 65% correction, because that figure now rests on this code.
+- `tests/report.test.sh` - 8 tests over the report, plus 4 **cross-instrument** tests feeding identical text to the live hook and to the baseline classifier and asserting they agree. The "agree by construction" claim made in the previous commit message is now asserted rather than asserted-in-prose.
+- `tests/run-all.sh` - one command for all three suites.
+
+**The duplicate-hook prediction came true, and is now resolved.** The reviewer fired twice on that commit with two different prompts - the current combined rubric from `settings.json`, and the older code-only rubric from the plugin. Plugin `hooks.json` is read once and cached, so the mid-session rewrite never reached it while `settings.json` picked it up immediately. The `settings.json` copy has been removed; the plugin is now the sole declaration, and it will load the current version on the next session. Recorded as a task at the time it was created rather than left to memory, which is why it did not get lost.
+
+**Deferred:**
+
+- `scripts/artisan-report.sh` has no unit-level coverage of its `jq` expression beyond end-to-end assertions on synthetic telemetry. Acceptable: the `jq` program is the behaviour, and testing it through its output is testing the right thing.
+
