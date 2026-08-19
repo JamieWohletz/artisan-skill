@@ -388,7 +388,15 @@ Why this is better than the original design rather than merely a workaround:
 - Passing the document inline via `$ARGUMENTS`: for `Edit`, `tool_input` carries only the `new_string` fragment, not the whole document, so the reviewer would judge a diff hunk out of context.
 - Hanging the review off a specific shell command the skill instructs at the end of step 4: works with tools, but reintroduces a discretionary trigger, which is the exact failure class this project exists to remove.
 
+**Verified with a positive control.** A deliberately weak document was committed - WHAT stated as "add a caching layer" (a masked solution), WHY as "it would be better", FOR WHOM as "Everyone", five solutions that were one mechanism varying only in TTL with one filler entry, a chosen-solution rationale of "flexibility is good", and a work log reading "Built it." The reviewer objected on five checks, grouped into three findings as instructed:
+
+- `PROBLEM STATEMENT` - masked solution, and WHY/FOR WHOM adding nothing (checks 9, 10)
+- `SOLUTIONS` - one mechanism varying in degree, plus filler (check 11)
+- `CHOSEN SOLUTION` / `WORK LOG` - rationale citing no earlier evidence, work log recording nothing (checks 12, 15)
+
+The control commit was then discarded. This matters beyond the rubric: the reviewer had been silent on the preceding real commit, and silence alone cannot distinguish a considered approval from an early bail-out. A loud response to a bad document on the same rubric establishes that the silence was a judgement.
+
 **Deferred:**
 
-- The reasoning rubric is untested against a document that should fail it. Slice 4 should feed it a deliberately weak document - a masked-solution problem statement, five near-identical solutions - and confirm it objects.
-- The `Write`/`Edit` agent-hook tool limitation is worth reporting upstream; the tool list an agent hook advertises does not match what it can use.
+- The `Write`/`Edit` agent-hook tool limitation is worth reporting upstream; the tool list an agent hook advertises does not match what it can actually use.
+- Reviewer false-positive rate is unmeasured. Four real commits so far produced four silences and two loud responses to planted controls, which is the right shape but far too small a sample to compare against Guardian's 7.5% deny rate.
