@@ -354,3 +354,41 @@ The positive control planted an `any[]` parameter with an `as any` cast, a hand-
 - The reviewer's judgement quality is tested against one synthetic bad commit. Slice 4 should test it against real commits, including ones it should stay silent on, to measure the false-positive rate against Guardian's 7.5% baseline.
 - `${CLAUDE_PLUGIN_ROOT}` interpolation inside a `prompt` field is unverified; the prompt hedges with a fallback path to `~/.claude/skills/artisan/SKILL.md`.
 - Scoping is still the crude `docs/artisan` directory check, now expressed as a prompt instruction rather than a shell test.
+
+### Slice 3 - doc reviewer, folded into the commit reviewer
+
+**File:** `hooks/hooks.json` (configuration only)
+
+**The planned design was killed by a platform limitation, discovered by probing rather than by reading docs.** The intent was an agent hook on `PostToolUse` for `Write`/`Edit` under `docs/artisan/**`, which would read the document, judge the reasoning, and `touch` a sentinel so it reviewed each document only once.
+
+Four probes, each isolating one variable:
+
+| Probe | Event | Uses tools? | Result |
+|---|---|---|---|
+| `command` hook, three glob patterns | `Edit` | n/a | all fired - `Edit(docs/artisan/**)` matches correctly |
+| agent returning fixed JSON | `Edit` | no | returned - agent hooks do fire on `Edit` |
+| agent listing its own tools | `Edit` | no | returned - reports `Bash, Read, Edit, Write` available |
+| agent calling `Read` once | `Edit` | **yes** | **nothing** - silent, no output, no timeout message |
+
+**Finding: agent hooks on `Write`/`Edit` events can return a verdict but cannot use tools.** They report `Read`, `Bash`, `Write` and `Edit` as available; calling any of them ends the run silently. Agent hooks on `Bash` events use tools without trouble, which is why the commit reviewer works.
+
+A claim recorded in the slice 2 entry was overstated as a result: "agent hooks can run `git`" was inferred from accurate `path:line` citations, but the reviewer could equally have used `Read` on the working tree. What is actually established is that tool use works in `Bash`-triggered agent hooks.
+
+**Chosen fix: fold the reasoning review into the commit reviewer.** One hook on `Bash(git commit *)`, now carrying two rubrics - checks 1-8 for code, checks 9-15 for the reasoning in a `docs/artisan/*.md` file the commit touched. Both are skipped when irrelevant: step 3 is skipped for markdown-only commits, step 4 only runs when the commit touched an artisan document.
+
+Why this is better than the original design rather than merely a workaround:
+
+- **The sentinel disappears.** One commit is one review by construction, so there is no state to keep and no `touch` to fail.
+- **It reuses a mechanism proven to work with tools** instead of fighting one that does not.
+- **Commit is the natural checkpoint.** The document is committed as part of the workflow anyway, and the workflow already ends each slice with a commit.
+- The cost of the extra rubric is zero on code-only commits and zero on commits that do not touch `docs/artisan/`.
+
+**Rejected alternatives:**
+
+- Passing the document inline via `$ARGUMENTS`: for `Edit`, `tool_input` carries only the `new_string` fragment, not the whole document, so the reviewer would judge a diff hunk out of context.
+- Hanging the review off a specific shell command the skill instructs at the end of step 4: works with tools, but reintroduces a discretionary trigger, which is the exact failure class this project exists to remove.
+
+**Deferred:**
+
+- The reasoning rubric is untested against a document that should fail it. Slice 4 should feed it a deliberately weak document - a masked-solution problem statement, five near-identical solutions - and confirm it objects.
+- The `Write`/`Edit` agent-hook tool limitation is worth reporting upstream; the tool list an agent hook advertises does not match what it can use.
