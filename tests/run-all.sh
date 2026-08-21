@@ -21,4 +21,12 @@ if [ -n "$FAILED" ]; then
   printf 'FAILED suites:%s\n' "$FAILED"
   exit 1
 fi
+
+# Record the commit these suites passed against. The Stop gate compares this
+# against HEAD to tell a tested commit from an untested one.
+ARTISAN_HOME="${ARTISAN_HOME:-$HOME/.artisan}"
+if mkdir -p "$ARTISAN_HOME" 2>/dev/null; then
+  git -C "$HERE/.." rev-parse HEAD > "$ARTISAN_HOME/last-test-run" 2>/dev/null
+fi
+
 printf 'All suites passed.\n'

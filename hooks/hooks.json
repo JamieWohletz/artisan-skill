@@ -23,6 +23,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/artisan-stop-gate.sh",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

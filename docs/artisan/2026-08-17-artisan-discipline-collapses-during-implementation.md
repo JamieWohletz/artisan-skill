@@ -524,3 +524,58 @@ The section that took the most care is *What these hooks do not do*, stating fou
 - `scripts/` and `tests/` ship inside the plugin directory. Harmless, but a future version might keep the distributed surface to `SKILL.md`, `hooks/`, and `scripts/`.
 - The README quotes 65%/47% from six sessions. Once artisan sessions accumulate under the hooks, that table should gain an after column, which is the verdict this project has deliberately not claimed yet.
 
+### Slice 6 - ABANDONED: blocking commit review is not achievable
+
+The commit reviewer reports; it cannot prevent. The attempt to move it to `PreToolUse`, so a failing commit never enters history, failed on a platform limitation.
+
+`PreToolUse` does block, and an agent hook there behaves as `continueOnBlock: true` - the tool is denied, the reason feeds back, the turn continues. That part worked. But the reviewer said so itself:
+
+> I could not verify the `~/.artisan/review-off` or `docs/artisan` bail-outs, nor read the staged diff - **tool access was denied**, so this review is based on the file content embedded in the command string.
+
+It produced accurate findings only because the test command happened to contain the file's contents via `printf`. A normal `git add && git commit` would have given it nothing.
+
+A `Stop`-event agent probe was then tried, since `Stop` is the only event where a block becomes an instruction. It hung for roughly six minutes across repeated 90-second timeouts and returned nothing; the transcript contains only the unfilled prompt template.
+
+**Corrected table of where agent hooks can use tools**, replacing the claim in the slice 3 entry that the boundary was `PostToolUse` versus `PreToolUse`. It is not - the doc reviewer was also `PostToolUse` and still failed:
+
+| event | matcher | agent tool use |
+|---|---|---|
+| `PostToolUse` | `Bash` | **works** - cited a line count from a file absent from the command |
+| `PostToolUse` | `Write\|Edit` | silent, returns nothing |
+| `PreToolUse` | `Bash` | explicitly denied |
+| `Stop` | none | hung ~6 minutes, returned nothing |
+
+`PostToolUse` + `Bash` is the only configuration where an agent hook both runs and can use tools. So an LLM reviewer can read a diff, or it can block, but not both.
+
+**Rejected for now: a git `pre-commit` hook running `claude -p`.** It would genuinely block, has full shell access, and covers hand commits too. A warm `claude -p` costs 7.5s, or 3.5s on Haiku - the original 59s measurement was a cold start, and quoting it would have wrongly killed the idea. Deferred because it overlaps the reviewer that already exists, requires a `core.hooksPath` install step, is trivially bypassed with `--no-verify`, and no evidence yet shows that reporting is insufficient. Recorded so the latency correction is not lost.
+
+### Slice 7 - Stop gate for omissions
+
+**Files:** `scripts/artisan-stop-gate.sh`, `tests/stop-gate.test.sh`, `tests/run-all.sh`
+
+**Why a separate mechanism from the commit reviewer.** A tool-call hook can only intercept an action taken. The worst measured failure is an action *not* taken: two of six sessions made their first code edit at turn 2, never writing a problem statement or solutions. No tool call represents "I skipped the workflow", so there is nothing for a commit hook to catch. The only moment an omission becomes visible is when the agent tries to finish.
+
+`Stop` is also the only event where a block becomes an instruction rather than context - the reason is fed back and the turn continues - so it can assign the missing work instead of merely denying something.
+
+**Deterministic, not an agent.** A command hook at a few milliseconds, after the agent probe on this same event hung for six minutes. Speed is secondary; the real reason is that this hook decides whether a session can end, and that decision must not depend on a model call that can hang.
+
+**What it blocks:**
+
+1. Source files changed, but no `docs/artisan` document has both SOLUTIONS and CHOSEN SOLUTION filled in with non-placeholder content.
+2. `HEAD` has moved past the commit recorded by the last successful test run, and the intervening changes touch source. In short: committed without running the suite.
+
+`tests/run-all.sh` now writes `HEAD` to `$ARTISAN_HOME/last-test-run` on success, which is what makes check 2 possible without parsing transcripts.
+
+**Loop protection is the first thing the script does.** A `Stop` hook that blocks unconditionally never lets a session end, and Claude Code provides no built-in protection. The gate returns immediately when `stop_hook_active` is true, so a failing check can block at most once per attempt. There is a test for it, and it runs first.
+
+**Release is one-shot.** `touch ~/.artisan/release` dismisses the next block and the file is consumed, so a dismissal cannot silently become a permanent disable. Each dismissal appends to `~/.artisan/dismissals.jsonl` with the reason that was waved through, which is what will eventually make the false-positive rate measurable rather than anecdotal.
+
+**Deliberately narrow.** Check 2 fires on committing untested source, not on editing untested source - otherwise it would block during ordinary mid-slice work, which is most of the time. Check 2 also stays silent when no test record exists at all, so a repo that has never run the suite is not gated on a comparison it cannot make.
+
+**Tests:** 20 cases against throwaway git repositories, covering loop protection, scoping, both checks, docs-only changes on both paths, one-shot release, dismissal logging, and fail-open on malformed input.
+
+**Deferred:**
+
+- The gate cannot see whether a slice was *smoke tested* in the sense the workflow means - a human confirming behaviour in the running app. It can only see whether the automated suite ran. The stronger check has no deterministic signal.
+- Detecting `git commit --no-verify` or other deliberate bypasses.
+
