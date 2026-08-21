@@ -579,3 +579,11 @@ A `Stop`-event agent probe was then tried, since `Stop` is the only event where 
 - The gate cannot see whether a slice was *smoke tested* in the sense the workflow means - a human confirming behaviour in the running app. It can only see whether the automated suite ran. The stronger check has no deterministic signal.
 - Detecting `git commit --no-verify` or other deliberate bypasses.
 
+### Slice 7 addendum - the runner was skipping a whole suite
+
+`tests/run-all.sh` named its suites explicitly, so `tests/stop-gate.test.sh` was never executed by it. The gate's 20 tests passed only because they were run directly; the runner reported "All suites passed" while silently omitting the newest one.
+
+Fixed by discovering suites with a glob rather than a list, so a new file is picked up by existing. The runner now also fails when it finds zero suites, because "no tests ran" and "every test passed" previously produced the same output.
+
+This is the fourth instance in this project of a control that was not in force while appearing to be: Guardian's denies that never denied, a matcher rename that disabled `Edit` but not `Write`, assertions that would have passed with `ggrep` absent, and now a runner reporting success over a suite it never ran. Every one of them was silent, and every one was found by looking rather than by being told. That is the pattern the whole document keeps circling, and it applies to the tooling built here as readily as to the tooling that prompted it.
+
